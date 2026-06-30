@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: afterhours
+    name: characterground
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt

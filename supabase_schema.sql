@@ -1,5 +1,5 @@
 -- Run this once in your Supabase project's SQL Editor (dashboard -> SQL Editor -> New query -> Run).
--- Sets up the tables afterhours needs, scoped per-user via auth.users, plus RLS as a backstop
+-- Sets up the tables characterground needs, scoped per-user via auth.users, plus RLS as a backstop
 -- (the Flask app talks to Postgres with the service_role key, which bypasses RLS and enforces
 -- per-user scoping itself — these policies just mean nothing leaks even if that key path changes).
 
