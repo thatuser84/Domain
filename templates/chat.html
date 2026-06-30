@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}afterhours — {{ character['name'] }}{% endblock %}
+{% block content %}
+<div class="chat-page">
+  <div class="chat-header">
+    <a class="btn btn-ghost btn-icon" href="{{ url_for('index') }}" title="back">
+      <svg class="icon" viewBox="0 0 24 24"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+    </a>
+    <div class="chat-title">
+      <div class="chat-avatar-wrap">
+        <div class="chat-avatar">{{ character['avatar'] if character['avatar'] else character['name'][0]|upper }}</div>
+      </div>
+      <div class="chat-title-text">
+        <h1>{{ character['name'] }}</h1>
+        {% if character['scenario'] %}
+          <p class="chat-subtitle">{{ character['scenario'] }}</p>
+        {% endif %}
+      </div>
+    </div>
+    <div class="chat-controls">
+      <select id="rating-select" class="rating-select" title="content rating — tone/explicitness only">
+        {% for level in rating_levels %}
+          <option value="{{ level }}" {% if level == current_rating %}selected{% endif %}>{{ rating_labels[level] }}</option>
+        {% endfor %}
+      </select>
+      <form method="post" action="{{ url_for('reset_chat', character_id=character['id']) }}" onsubmit="return confirm('reset this chat? history will be wiped.');">
+        <button type="submit" class="btn btn-ghost btn-icon" title="reset chat">
+          <svg class="icon" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+        </button>
+      </form>
+    </div>
+  </div>
+  <div id="rating-saved" class="rating-saved">rating saved</div>
+
+  <div id="messages" class="messages">
+    {% for m in messages %}
+      <div class="msg msg-{{ m['role'] }}">
+        {% if m['role'] == 'assistant' %}
+          <div class="msg-avatar">{{ character['avatar'] if character['avatar'] else character['name'][0]|upper }}</div>
+        {% endif %}
+        <div class="msg-bubble">{{ m['content'] }}</div>
+      </div>
+    {% endfor %}
+  </div>
+
+  <form id="composer" class="composer">
+    <textarea id="input" placeholder="say something..." rows="1" required></textarea>
+    <button type="submit" class="composer-send" title="send">
+      <svg class="icon" viewBox="0 0 24 24" style="stroke:#fff"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+    </button>
+  </form>
+</div>
+
+<script>
+  const characterId = {{ character['id'] }};
+  const characterAvatar = {{ (character['avatar'] if character['avatar'] else character['name'][0]|upper) | tojson }};
+</script>
+<script src="{{ url_for('static', filename='chat.js') }}"></script>
+<script>
+  const ratingSelect = document.getElementById("rating-select");
+  const ratingSaved = document.getElementById("rating-saved");
+  let ratingSavedTimer = null;
+
+  ratingSelect.addEventListener("change", async () => {
+    try {
+      await fetch(`/chat/${characterId}/rating`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rating: ratingSelect.value }),
+      });
+      ratingSaved.classList.add("show");
+      clearTimeout(ratingSavedTimer);
+      ratingSavedTimer = setTimeout(() => ratingSaved.classList.remove("show"), 1500);
+    } catch (err) {
+      console.error("failed to save rating", err);
+    }
+  });
+</script>
+{% endblock %}

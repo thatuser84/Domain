@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}afterhours — settings{% endblock %}
+{% block content %}
+<div class="page page-narrow">
+  <div class="page-header">
+    <h1>settings</h1>
+    <a class="btn btn-ghost" href="{{ url_for('index') }}">back</a>
+  </div>
+
+  {% if saved %}
+    <div class="banner banner-ok">saved.</div>
+  {% endif %}
+
+  {% if not has_key %}
+    <div class="banner banner-warn">
+      you haven't added a groq api key yet — your chats won't work until you do.
+      it's free, takes a minute: <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a>.
+    </div>
+  {% endif %}
+
+  <p class="hint" style="margin-bottom:18px">
+    this key is yours alone — it's tied to your account, used only for your chats, and nobody else's
+    usage runs through it. afterhours doesn't supply a shared key for everyone.
+  </p>
+
+  <form method="post" class="form">
+    <label for="groq_api_key">your groq api key {% if has_key %}<span class="hint">(currently: {{ masked_key }})</span>{% endif %}</label>
+    <input type="password" id="groq_api_key" name="groq_api_key" placeholder="{{ 'leave blank to keep current key' if has_key else 'gsk_...' }}" autocomplete="off">
+
+    <label for="groq_model">model</label>
+    <input type="text" id="groq_model" name="groq_model" value="{{ current_model }}">
+    <p class="hint">defaults to <code>llama-3.3-70b-versatile</code> — good balance of smart + loose for roleplay.
+      <code>openai/gpt-oss-120b</code> is smarter but more conservative. full list at
+      <a href="https://console.groq.com/docs/models" target="_blank" rel="noopener">console.groq.com/docs/models</a>.</p>
+
+    <button type="submit" class="btn btn-primary btn-block">save</button>
+  </form>
+</div>
+{% endblock %}

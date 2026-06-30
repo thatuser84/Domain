@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}afterhours — new character{% endblock %}
+{% block content %}
+<div class="page page-narrow">
+  <div class="page-header">
+    <h1>new character</h1>
+    <a class="btn btn-ghost" href="{{ url_for('index') }}">cancel</a>
+  </div>
+
+  {% if error %}
+    <div class="banner banner-warn">{{ error }}</div>
+  {% endif %}
+
+  <form method="post" class="form">
+    <div class="avatar-preview-row">
+      <div class="avatar-preview" id="avatar-preview">{{ avatar if avatar else "?" }}</div>
+      <div style="flex:1">
+        <label for="avatar" style="margin-top:0">avatar (emoji or single letter, optional)</label>
+        <input type="text" id="avatar" name="avatar" maxlength="2" placeholder="🦊" value="{{ avatar or '' }}">
+      </div>
+    </div>
+
+    <label for="name">name</label>
+    <input type="text" id="name" name="name" placeholder="e.g. Vesper" value="{{ name or '' }}" required>
+
+    <label for="persona">persona</label>
+    <textarea id="persona" name="persona" rows="6" placeholder="who they are: personality, voice, quirks, background, how they speak..." required>{{ persona or '' }}</textarea>
+
+    <label for="scenario">scenario (optional)</label>
+    <textarea id="scenario" name="scenario" rows="4" placeholder="the setting / situation the chat opens in">{{ scenario or '' }}</textarea>
+
+    <label for="first_message">opening message (optional)</label>
+    <textarea id="first_message" name="first_message" rows="3" placeholder="what they say to greet you when the chat starts">{{ first_message or '' }}</textarea>
+
+    <label for="rating">content rating</label>
+    <select id="rating" name="rating">
+      {% for level in rating_levels %}
+        <option value="{{ level }}" {% if level == (selected_rating or 'explicit') %}selected{% endif %}>{{ rating_labels[level] }}</option>
+      {% endfor %}
+    </select>
+    <p class="hint">just a dial on tone/explicitness — you can change this any time from the chat screen.</p>
+
+    <button type="submit" class="btn btn-primary btn-block">create &amp; start chat</button>
+  </form>
+</div>
+
+<script>
+  const nameInput = document.getElementById("name");
+  const avatarInput = document.getElementById("avatar");
+  const preview = document.getElementById("avatar-preview");
+
+  function updatePreview() {
+    const avatar = avatarInput.value.trim();
+    const name = nameInput.value.trim();
+    preview.textContent = avatar || (name ? name[0].toUpperCase() : "?");
+  }
+  avatarInput.addEventListener("input", updatePreview);
+  nameInput.addEventListener("input", updatePreview);
+</script>
+{% endblock %}

@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}afterhours — log in{% endblock %}
+{% block content %}
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="page-header">
+      <h1>log in</h1>
+    </div>
+
+    {% if error %}
+      <div class="banner banner-warn">{{ error }}</div>
+    {% endif %}
+    {% if notice %}
+      <div class="banner banner-ok">{{ notice }}</div>
+    {% endif %}
+
+    <form method="post" class="form">
+      <label for="email">email</label>
+      <input type="email" id="email" name="email" value="{{ email or '' }}" required autofocus>
+
+      <label for="password">password</label>
+      <input type="password" id="password" name="password" required>
+
+      <button type="submit" class="btn btn-primary btn-block">log in</button>
+    </form>
+    <p class="hint" style="margin-top:18px">no account yet? <a href="{{ url_for('signup') }}" style="color:var(--accent-bright)">sign up</a></p>
+  </div>
+</div>
+{% endblock %}

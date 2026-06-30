@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: afterhours
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      # Secrets — values aren't stored here (sync: false), Render prompts for each one when you
+      # create the service from this blueprint. Real values are listed in the deploy notes.
+      - key: FLASK_SECRET
+        sync: false
+      - key: GROQ_MODEL
+        sync: false
+      - key: MAX_TOKENS
+        sync: false
+      - key: TEMPERATURE
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: MODERATION_BASE_URL
+        sync: false
+      - key: MODERATION_API_KEY
+        sync: false
+      - key: MODERATION_MODEL
+        sync: false
+      - key: STAFF_EMAILS
+        sync: false

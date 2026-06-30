@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}afterhours{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="{{ url_for('index') }}">
+        <span class="brand-mark">af</span>
+        <span class="brand-name">afterhours</span>
+      </a>
+
+      {% if session.get('user_id') %}
+        <nav class="sidebar-nav">
+          <a class="nav-item {{ 'active' if request.endpoint == 'index' }}" href="{{ url_for('index') }}">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            characters
+          </a>
+          <a class="nav-item {{ 'active' if request.endpoint == 'new_character' }}" href="{{ url_for('new_character') }}">
+            <svg class="icon" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            new character
+          </a>
+          <a class="nav-item {{ 'active' if request.endpoint == 'settings' }}" href="{{ url_for('settings') }}">
+            <svg class="icon" viewBox="0 0 24 24"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+            settings
+          </a>
+          <a class="nav-item {{ 'active' if request.endpoint == 'terms' }}" href="{{ url_for('terms') }}">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            terms
+          </a>
+        </nav>
+        <div class="sidebar-footer">
+          <div class="user-pill">
+            <span class="user-avatar">{{ (session.get('user_email') or '?')[0]|upper }}</span>
+            <span class="user-email">{{ session.get('user_email') }}</span>
+            <form method="post" action="{{ url_for('logout') }}" class="logout-form">
+              <button type="submit" class="logout-btn" title="log out">
+                <svg class="icon" viewBox="0 0 24 24"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+              </button>
+            </form>
+          </div>
+        </div>
+      {% else %}
+        <nav class="sidebar-nav">
+          <a class="nav-item {{ 'active' if request.endpoint == 'login' }}" href="{{ url_for('login') }}">log in</a>
+          <a class="nav-item {{ 'active' if request.endpoint == 'signup' }}" href="{{ url_for('signup') }}">sign up</a>
+          <a class="nav-item {{ 'active' if request.endpoint == 'terms' }}" href="{{ url_for('terms') }}">terms</a>
+        </nav>
+      {% endif %}
+    </aside>
+
+    <main class="main-area">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</body>
+</html>

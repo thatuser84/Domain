@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}afterhours — terms & service{% endblock %}
+{% block content %}
+<div class="page page-narrow legal">
+  <div class="page-header">
+    <h1>terms &amp; service</h1>
+    <a class="btn btn-ghost" href="{{ url_for('index') }}">back</a>
+  </div>
+  <p class="legal-updated">last updated: {{ updated }}</p>
+
+  <h2>1. what this is</h2>
+  <p>afterhours is a private, single-operator fiction roleplay tool. It generates text via a
+  third-party language model (currently served through Groq) based on character sheets and prompts
+  you write. Everything produced — dialogue, narration, scenarios — is fictional. No part of it
+  reflects the views, consent, or involvement of any real person unless you are the one writing it.</p>
+
+  <h2>2. who can use this</h2>
+  <p>You must be at least 18 years old to use this app. By using it, you're confirming you meet that
+  requirement and that you're accessing it in a jurisdiction where doing so is legal.</p>
+
+  <h2>3. no content safeguards</h2>
+  <p>This app does not run automated content moderation, age-verification on generated text, or
+  filtering on what characters can say or do. The "tone dial" on each character is a flavor setting,
+  not a safety system. There are no guardrails beyond your own judgment about what you generate. Use
+  of this tool, and responsibility for the content you prompt and read, rests entirely with you.</p>
+
+  <h2>4. chats are not private from review</h2>
+  <p>Conversations are stored in this app's database, tied to your account. Despite the lack of
+  automated moderation, stored chats can still be reviewed by a human (the operator of this instance)
+  — for debugging, maintenance, abuse investigation, or legal compliance. Don't treat anything written
+  here as unreadable by anyone but you.</p>
+
+  <h2>5. enforcement</h2>
+  <p>Content that crosses from fiction into something that targets a real, identifiable person without
+  consent, depicts minors in a sexual context, or otherwise constitutes illegal content, is not
+  covered by "it's just fiction" and is not tolerated. If material like that is found on review, it
+  can result in your access being suspended or permanently banned, and — where required by law —
+  reported to the relevant authorities or pursued through legal action.</p>
+
+  <h2>6. no warranty</h2>
+  <p>This is a personal project, not a commercial product. It's provided as-is, with no guarantee of
+  uptime, accuracy, or fitness for any particular purpose. Model output can be unpredictable —
+  treat everything it generates as exactly that: generated, not factual, not advice.</p>
+
+  <h2>7. changes</h2>
+  <p>These terms can change as the app changes. Continuing to use afterhours after an update means
+  you accept the current version.</p>
+</div>
+{% endblock %}
