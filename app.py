@@ -390,7 +390,14 @@ def log_moderation_flag(user_id, character_id, source, content, category, reason
 # stored rows are ciphertext, not just access-restricted.
 # ---------------------------------------------------------------------------
 TRUE_PRIVATE_KEY = os.environ.get("TRUE_PRIVATE_ENCRYPTION_KEY", "")
-_fernet = Fernet(TRUE_PRIVATE_KEY.encode()) if TRUE_PRIVATE_KEY else None
+try:
+    _fernet = Fernet(TRUE_PRIVATE_KEY.encode()) if TRUE_PRIVATE_KEY else None
+except Exception as e:
+    # A malformed key here previously crashed the entire app at import time — gunicorn couldn't
+    # even boot, taking down every feature over one bad env var. Degrade instead: true-private
+    # encryption silently no-ops (content stored as plaintext) rather than the whole site 502ing.
+    print(f"WARNING: TRUE_PRIVATE_ENCRYPTION_KEY is malformed, true-private encryption disabled: {e}")
+    _fernet = None
 TRUE_PRIVATE_CHANCE = float(os.environ.get("TRUE_PRIVATE_CHANCE", "0.25"))
 TRUE_PRIVATE_CLEAN_DAYS = 7
 
