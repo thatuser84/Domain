@@ -9,41 +9,58 @@
   <p class="legal-updated">last updated: {{ updated }}</p>
 
   <h2>1. what this is</h2>
-  <p>characterground is a private, single-operator fiction roleplay tool. It generates text via a
-  third-party language model (currently served through Groq) based on character sheets and prompts
-  you write. Everything produced — dialogue, narration, scenarios — is fictional. No part of it
-  reflects the views, consent, or involvement of any real person unless you are the one writing it.</p>
+  <p>characterground is a fiction roleplay tool. It generates text via a third-party language model
+  (currently served through Groq, using an API key you provide yourself) based on character sheets
+  and prompts you write. Everything produced — dialogue, narration, scenarios — is fictional. No part
+  of it reflects the views, consent, or involvement of any real person unless you are the one writing
+  it. Accounts are individual — each person brings their own model access key, and each person's
+  conversations are private to them.</p>
 
   <h2>2. who can use this</h2>
   <p>You must be at least 18 years old to use this app. By using it, you're confirming you meet that
   requirement and that you're accessing it in a jurisdiction where doing so is legal.</p>
 
-  <h2>3. no content safeguards</h2>
-  <p>This app does not run automated content moderation, age-verification on generated text, or
-  filtering on what characters can say or do. The "tone dial" on each character is a flavor setting,
-  not a safety system. There are no guardrails beyond your own judgment about what you generate. Use
-  of this tool, and responsibility for the content you prompt and read, rests entirely with you.</p>
+  <h2>3. moderation is narrow, not a general filter</h2>
+  <p>This app runs automated checks for a specific, narrow set of things: sexual content involving
+  minors, non-consensual sexualization of a real identifiable person, and genuinely actionable
+  illegal real-world content. Content flagged in those categories can be blocked before it's created
+  or sent. Everything else — explicit sexual content, violence, taboo or dark themes, fictional
+  non-consent between adult characters — is intentionally left alone; the "tone dial" on each
+  character is a flavor setting, not a safety system, and ordinary adult fiction is the entire point
+  of this app. Automated checks can miss things or make mistakes in either direction; they're a
+  backstop, not a guarantee, and responsibility for what you write and read still rests with you.</p>
 
   <h2>4. chats are not private from review</h2>
-  <p>Conversations are stored in this app's database, tied to your account. Despite the lack of
-  automated moderation, stored chats can still be reviewed by a human (the operator of this instance)
-  — for debugging, maintenance, abuse investigation, or legal compliance. Don't treat anything written
-  here as unreadable by anyone but you.</p>
+  <p>Conversations are stored in this app's database, tied to your account. Stored chats can be
+  reviewed by a human (the operator of this instance) — for debugging, maintenance, abuse
+  investigation, or legal compliance. Don't treat anything written here as unreadable by anyone but
+  you.</p>
 
-  <h2>5. enforcement</h2>
+  <h2>5. public characters &amp; the community page</h2>
+  <p>You can mark a character you create as "public." Doing so shares that character's sheet — name,
+  persona, scenario, tags — on the community page for other accounts to discover and start their own
+  conversations with. It does not share your conversations: every account that chats with a public
+  character gets their own private thread, invisible to the character's creator and to everyone else.
+  Public character sheets go through the same moderation described above before they're published,
+  and can still be taken down afterward — by you, or by the operator — if they're found to violate
+  these terms.</p>
+
+  <h2>6. enforcement</h2>
   <p>Content that crosses from fiction into something that targets a real, identifiable person without
   consent, depicts minors in a sexual context, or otherwise constitutes illegal content, is not
-  covered by "it's just fiction" and is not tolerated. If material like that is found on review, it
-  can result in your access being suspended or permanently banned, and — where required by law —
-  reported to the relevant authorities or pursued through legal action.</p>
+  covered by "it's just fiction" and is not tolerated. If material like that is found — whether by the
+  automated checks, on review, or reported by someone else — it can result in the content being
+  removed, your access being suspended or permanently banned, and — where required by law — reported
+  to the relevant authorities or pursued through legal action.</p>
 
-  <h2>6. no warranty</h2>
+  <h2>7. no warranty</h2>
   <p>This is a personal project, not a commercial product. It's provided as-is, with no guarantee of
   uptime, accuracy, or fitness for any particular purpose. Model output can be unpredictable —
   treat everything it generates as exactly that: generated, not factual, not advice.</p>
 
-  <h2>7. changes</h2>
-  <p>These terms can change as the app changes. Continuing to use characterground after an update means
-  you accept the current version.</p>
+  <h2>8. changes</h2>
+  <p>These terms can change as the app changes. Continuing to use characterground after an update
+  means you accept the current version. You explicitly accepted these terms when you signed up;
+  material changes may ask you to accept again.</p>
 </div>
 {% endblock %}

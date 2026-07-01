@@ -69,6 +69,7 @@ create table if not exists user_settings (
   user_id uuid primary key references auth.users(id) on delete cascade,
   groq_api_key text,
   groq_model text,
+  terms_accepted_at timestamptz,
   updated_at timestamptz not null default now()
 );
 

@@ -476,12 +476,14 @@ def get_user_settings(user_id):
     return res.data[0] if res.data else {}
 
 
-def set_user_settings(user_id, api_key=None, model=None):
+def set_user_settings(user_id, api_key=None, model=None, terms_accepted=False):
     payload = {"user_id": user_id}
     if api_key is not None:
         payload["groq_api_key"] = api_key
     if model is not None:
         payload["groq_model"] = model
+    if terms_accepted:
+        payload["terms_accepted_at"] = datetime.utcnow().isoformat()
     db.table("user_settings").upsert(payload).execute()
 
 
@@ -561,6 +563,7 @@ def signup():
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
         confirm = request.form.get("confirm_password", "")
+        terms_accepted = request.form.get("terms_accepted") == "1"
 
         error = None
         if not email or not password:
@@ -569,6 +572,8 @@ def signup():
             error = "passwords don't match."
         elif len(password) < 8:
             error = "password needs to be at least 8 characters."
+        elif not terms_accepted:
+            error = "you have to agree to the terms & service to create an account."
 
         if error:
             return render_template("signup.html", error=error, email=email)
@@ -579,6 +584,9 @@ def signup():
             result = anon_client.auth.sign_up({"email": email, "password": password})
         except Exception as e:
             return render_template("signup.html", error=str(e), email=email)
+
+        if result.user is not None:
+            set_user_settings(result.user.id, terms_accepted=True)
 
         if result.session is None or result.user is None:
             return render_template(

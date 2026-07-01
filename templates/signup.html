@@ -25,6 +25,11 @@
       <label for="confirm_password">confirm password</label>
       <input type="password" id="confirm_password" name="confirm_password" required minlength="8">
 
+      <label class="minor-safe-check" style="margin-top:16px">
+        <input type="checkbox" name="terms_accepted" value="1" required>
+        i'm 18+ and agree to the <a href="{{ url_for('terms') }}" target="_blank" style="color:var(--accent-bright)">terms &amp; service</a>
+      </label>
+
       <button type="submit" class="btn btn-primary btn-block">create account</button>
     </form>
     <p class="hint" style="margin-top:18px">already have an account? <a href="{{ url_for('login') }}" style="color:var(--accent-bright)">log in</a></p>
