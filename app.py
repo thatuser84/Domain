@@ -289,7 +289,7 @@ def has_minor_keyword(text):
     return False, ""
 
 
-def check_moderation(text, context=None):
+def check_moderation(text, context=None, fail_open=True):
     """Classify text against the narrow prohibited-content categories above.
 
     `context` is the character sheet (persona/scenario) for the chat this text belongs to, if any.
@@ -297,12 +297,21 @@ def check_moderation(text, context=None):
     the character it's addressed to/from is established as a minor — the classifier needs that
     context to catch it, not just the bare message text.
 
-    Fails OPEN on any error (timeout, bad response, provider down, no key configured) — returns
-    not-flagged rather than raising. Moderation is a backstop, not the only thing standing between
-    users and the app; a flaky third-party proxy hiccuping shouldn't take the whole app down.
+    `fail_open` controls what happens on any error (timeout, bad response, provider down, no key
+    configured):
+    - True (default, used for live chat messages): returns not-flagged. Moderation is a backstop
+      on an already-existing conversation, not the only thing standing between users and the app —
+      a flaky third-party proxy hiccuping shouldn't take the whole chat experience down.
+    - False (used for character sheet creation/edit): returns flagged with category
+      "check_failed". Creating/editing a character is much lower-frequency than sending a message,
+      and this is the one moment a genuinely new violating character sheet could slip in — asking
+      someone to retry costs a lot less than silently letting that through because the moderation
+      provider hiccuped at exactly the wrong moment. Reproduced this exact scenario live once.
     """
     if not MODERATION_API_KEY:
-        return False, "none", "moderation not configured"
+        return (False, "none", "moderation not configured") if fail_open else (
+            True, "check_failed", "moderation isn't configured, and this check can't fail open."
+        )
 
     user_content = text if not context else f"--- CHARACTER CONTEXT ---\n{context}\n\n--- MESSAGE TO CLASSIFY ---\n{text}"
 
@@ -334,7 +343,9 @@ def check_moderation(text, context=None):
         data = json.loads(raw)
         return bool(data.get("flag")), data.get("category") or "none", data.get("reasoning") or ""
     except Exception as e:
-        return False, "none", f"moderation check failed: {e}"
+        if fail_open:
+            return False, "none", f"moderation check failed: {e}"
+        return True, "check_failed", f"moderation check failed, refusing to fail open here: {e}"
 
 
 def log_moderation_flag(user_id, character_id, source, content, category, reasoning):
@@ -808,7 +819,18 @@ def run_character_moderation(name, persona, scenario, first_message, rating, min
     staff = is_staff(session.get("user_email"))
 
     if has_keyword or not staff:
-        flagged, category, reasoning = check_moderation(sheet_text)
+        # fail_open=False here on purpose: this is the one moment a genuinely new violating
+        # character sheet enters the system. See check_moderation's docstring.
+        flagged, category, reasoning = check_moderation(sheet_text, fail_open=False)
+        if category == "check_failed":
+            return {
+                "ok": False,
+                "minor_safe_mode": False,
+                "rating": rating,
+                "offer_minor_safe": False,
+                "error": "the moderation checker is temporarily unreachable, so this couldn't be "
+                "safely verified. try again in a bit.",
+            }
         if flagged and category == "minors_nonsexual":
             if not minor_safe_confirmed:
                 log_moderation_flag(
