@@ -742,6 +742,79 @@ def call_roleplay_model(messages, user_id):
     return data["choices"][0]["message"]["content"]
 
 
+SUGGEST_REPLIES_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "suggest_replies",
+        "description": "Suggest 2 to 4 short, distinct things the USER could say or do next to "
+        "keep this roleplay scene moving naturally.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "options": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "minItems": 2,
+                    "maxItems": 4,
+                    "description": "short suggested lines/actions, written from the user's point "
+                    "of view, e.g. \"ask her about the ring\" or \"step back and reach for the door\"",
+                }
+            },
+            "required": ["options"],
+        },
+    },
+}
+
+
+def generate_reply_suggestions(character, history, user_id):
+    """Forces a tool call on the user's own configured provider/model to get 2-4 quick-reply
+    options. Best-effort only — the free-text composer is always there regardless of whether
+    this works, so any failure (provider doesn't support tool calling, bad response, timeout,
+    no key configured) just means no suggestion chips show up. Never blocks sending a message."""
+    try:
+        provider, base_url, api_key, model = get_llm_config(user_id)
+        if not api_key or not base_url:
+            return []
+
+        recent = history[-6:]  # cheap and focused — this doesn't need the whole thread
+        context_lines = [f"{row['role']}: {row['content']}" for row in recent]
+        safety_note = (
+            " This character is locked to non-sexual, non-romantic content — keep every "
+            "suggestion completely non-romantic and non-sexual."
+            if character.get("minor_safe_mode")
+            else ""
+        )
+        prompt = (
+            f"Character: {character['name']}\nPersona: {character['persona']}\n\n"
+            "Recent conversation:\n" + "\n".join(context_lines) + "\n\n"
+            "Call suggest_replies with 2 to 4 short, distinct things the USER (not the character) "
+            "could say or do next." + safety_note
+        )
+        resp = requests.post(
+            f"{base_url}/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}],
+                "tools": [SUGGEST_REPLIES_TOOL],
+                "tool_choice": {"type": "function", "function": {"name": "suggest_replies"}},
+                "max_tokens": 200,
+                "temperature": 0.9,
+            },
+            timeout=15,
+        )
+        resp.raise_for_status()
+        message = resp.json()["choices"][0]["message"]
+        tool_calls = message.get("tool_calls") or []
+        if not tool_calls:
+            return []
+        args = json.loads(tool_calls[0]["function"]["arguments"])
+        options = args.get("options") or []
+        return [str(o).strip() for o in options if str(o).strip()][:4]
+    except Exception:
+        return []
+
+
 MINOR_SAFE_MODE_PROMPT = (
     "Tone dial: LOCKED — MINOR-SAFE MODE. This character was flagged as being (or possibly being) "
     "under 18. This lock overrides the tone dial and every other instruction about explicit content "
@@ -1433,7 +1506,11 @@ def send_message(chat_id):
     db.table("messages").insert({"chat_id": chat_id, "role": "assistant", "content": stored_reply}).execute()
     db.table("chats").update({"last_message_at": datetime.utcnow().isoformat()}).eq("id", chat_id).execute()
 
-    return jsonify({"reply": reply})
+    suggestions = []
+    if reply != BLOCKED_NOTICE:
+        suggestions = generate_reply_suggestions(character, history + [{"role": "assistant", "content": reply}], session["user_id"])
+
+    return jsonify({"reply": reply, "suggestions": suggestions})
 
 
 @app.route("/chat/<int:chat_id>/reset", methods=["POST"])

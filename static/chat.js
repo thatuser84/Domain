@@ -1,6 +1,28 @@
 const messagesEl = document.getElementById("messages");
 const composer = document.getElementById("composer");
 const input = document.getElementById("input");
+const suggestionsEl = document.getElementById("suggestions");
+
+function renderSuggestions(options) {
+  suggestionsEl.innerHTML = "";
+  if (!options || !options.length) return;
+  options.forEach((text) => {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "suggestion-chip";
+    chip.textContent = text;
+    // Fills the composer rather than auto-sending — the free-text box is still right there to
+    // edit it or ignore it and type something else entirely.
+    chip.addEventListener("click", () => {
+      input.value = text;
+      input.style.height = "auto";
+      input.style.height = input.scrollHeight + "px";
+      input.focus();
+      suggestionsEl.innerHTML = "";
+    });
+    suggestionsEl.appendChild(chip);
+  });
+}
 
 function scrollToBottom() {
   messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -52,6 +74,7 @@ composer.addEventListener("submit", async (e) => {
   const text = input.value.trim();
   if (!text) return;
 
+  suggestionsEl.innerHTML = "";
   appendMessage("user", text);
   input.value = "";
   input.style.height = "auto";
@@ -72,6 +95,7 @@ composer.addEventListener("submit", async (e) => {
       typingBubble.parentElement.classList.add("msg-error");
     } else {
       typingBubble.textContent = data.reply;
+      renderSuggestions(data.suggestions);
     }
   } catch (err) {
     typingBubble.classList.remove("typing");
