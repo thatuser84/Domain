@@ -823,6 +823,20 @@ MINOR_SAFE_MODE_PROMPT = (
 )
 
 
+def wrap_ooc(text):
+    """Tags a message as out-of-character so the model reads it as the user stepping outside the
+    story to talk directly, not as a line their character is saying in-scene. Every other safety
+    rule in the system prompt (including minor-safe mode) still applies in full — this only
+    changes voice/framing, never the content rules."""
+    return (
+        "[OUT OF CHARACTER — the user is stepping outside the story to talk to you directly: "
+        "asking a question or telling you to change something about the scene/character. Drop "
+        "the character's voice for this one reply and answer plainly as yourself, then return to "
+        "normal in-character roleplay on the next message. Every other rule and restriction in "
+        "this prompt still applies in full.]\n\n" + text
+    )
+
+
 def build_system_prompt(character, chat_row):
     if character.get("minor_safe_mode"):
         tone_block = MINOR_SAFE_MODE_PROMPT
@@ -1438,14 +1452,28 @@ def send_message(chat_id):
     chat_row, character = get_owned_chat(chat_id)
     true_private = chat_row.get("true_private", False)
 
-    user_text = (request.json or {}).get("message", "").strip()
+    raw_text = (request.json or {}).get("message", "").strip()
+    if not raw_text:
+        return jsonify({"error": "empty message"}), 400
+
+    # A leading "/" steps outside the story to talk to the model directly — ask it something, or
+    # tell it to change something about the scene/character — instead of sending an in-character
+    # line. Stripped before storage/display; the model sees it wrapped with an explicit OOC tag
+    # (below) instead of the raw slash, so it reliably knows to drop the character voice for it.
+    is_ooc = raw_text.startswith("/")
+    user_text = raw_text[1:].strip() if is_ooc else raw_text
     if not user_text:
         return jsonify({"error": "empty message"}), 400
 
     # Moderation always runs on the plaintext variables below, before anything gets encrypted for
     # storage — encryption only happens at the .insert() calls themselves.
     db.table("messages").insert(
-        {"chat_id": chat_id, "role": "user", "content": encrypt_content(user_text) if true_private else user_text}
+        {
+            "chat_id": chat_id,
+            "role": "user",
+            "content": encrypt_content(user_text) if true_private else user_text,
+            "is_ooc": is_ooc,
+        }
     ).execute()
 
     staff = is_staff(session.get("user_email"))
@@ -1470,7 +1498,7 @@ def send_message(chat_id):
 
     history_res = (
         db.table("messages")
-        .select("role,content")
+        .select("role,content,is_ooc")
         .eq("chat_id", chat_id)
         .order("id", desc=False)
         .execute()
@@ -1481,7 +1509,10 @@ def send_message(chat_id):
             row["content"] = decrypt_content(row["content"])
 
     api_messages = [{"role": "system", "content": build_system_prompt(character, chat_row)}]
-    api_messages += [{"role": row["role"], "content": row["content"]} for row in history]
+    api_messages += [
+        {"role": row["role"], "content": wrap_ooc(row["content"]) if row.get("is_ooc") else row["content"]}
+        for row in history
+    ]
 
     try:
         reply = call_roleplay_model(api_messages, session["user_id"])
@@ -1501,14 +1532,19 @@ def send_message(chat_id):
             reply = BLOCKED_NOTICE
 
     stored_reply = encrypt_content(reply) if (true_private and reply != BLOCKED_NOTICE) else reply
-    db.table("messages").insert({"chat_id": chat_id, "role": "assistant", "content": stored_reply}).execute()
+    db.table("messages").insert(
+        {"chat_id": chat_id, "role": "assistant", "content": stored_reply, "is_ooc": is_ooc}
+    ).execute()
     db.table("chats").update({"last_message_at": datetime.utcnow().isoformat()}).eq("id", chat_id).execute()
 
+    # Skip suggestions right after an OOC exchange — "things you could say next" doesn't make much
+    # sense immediately after a meta/config aside, the user just wants to get back to the scene
+    # their own way.
     suggestions = []
-    if reply != BLOCKED_NOTICE:
+    if reply != BLOCKED_NOTICE and not is_ooc:
         suggestions = generate_reply_suggestions(character, history + [{"role": "assistant", "content": reply}], session["user_id"])
 
-    return jsonify({"reply": reply, "suggestions": suggestions})
+    return jsonify({"reply": reply, "suggestions": suggestions, "ooc": is_ooc})
 
 
 @app.route("/chat/<int:chat_id>/reset", methods=["POST"])

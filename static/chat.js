@@ -29,9 +29,9 @@ function scrollToBottom() {
 }
 scrollToBottom();
 
-function appendMessage(role, content) {
+function appendMessage(role, content, isOoc) {
   const wrap = document.createElement("div");
-  wrap.className = `msg msg-${role}`;
+  wrap.className = `msg msg-${role}${isOoc ? " msg-ooc" : ""}`;
 
   if (role === "assistant") {
     const avatar = document.createElement("div");
@@ -49,12 +49,30 @@ function appendMessage(role, content) {
 
   const bubble = document.createElement("div");
   bubble.className = "msg-bubble";
-  bubble.textContent = content;
+  if (isOoc) {
+    const tag = document.createElement("span");
+    tag.className = "ooc-tag";
+    tag.textContent = "ooc";
+    bubble.appendChild(tag);
+  }
+  bubble.appendChild(document.createTextNode(content));
   wrap.appendChild(bubble);
 
   messagesEl.appendChild(wrap);
   scrollToBottom();
   return bubble;
+}
+
+function setBubbleContent(bubble, content, isOoc) {
+  bubble.innerHTML = "";
+  if (isOoc) {
+    const tag = document.createElement("span");
+    tag.className = "ooc-tag";
+    tag.textContent = "ooc";
+    bubble.appendChild(tag);
+    bubble.parentElement.classList.add("msg-ooc");
+  }
+  bubble.appendChild(document.createTextNode(content));
 }
 
 input.addEventListener("input", () => {
@@ -71,35 +89,39 @@ input.addEventListener("keydown", (e) => {
 
 composer.addEventListener("submit", async (e) => {
   e.preventDefault();
-  const text = input.value.trim();
+  const rawText = input.value.trim();
+  if (!rawText) return;
+
+  const isOoc = rawText.startsWith("/");
+  const text = isOoc ? rawText.slice(1).trim() : rawText;
   if (!text) return;
 
   suggestionsEl.innerHTML = "";
-  appendMessage("user", text);
+  appendMessage("user", text, isOoc);
   input.value = "";
   input.style.height = "auto";
 
-  const typingBubble = appendMessage("assistant", "...");
+  const typingBubble = appendMessage("assistant", "...", isOoc);
   typingBubble.classList.add("typing");
 
   try {
     const res = await fetch(`/chat/${chatId}/send`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: text }),
+      body: JSON.stringify({ message: rawText }),
     });
     const data = await res.json();
     typingBubble.classList.remove("typing");
     if (!res.ok) {
-      typingBubble.textContent = `[error] ${data.error || "something broke"}`;
+      setBubbleContent(typingBubble, `[error] ${data.error || "something broke"}`, false);
       typingBubble.parentElement.classList.add("msg-error");
     } else {
-      typingBubble.textContent = data.reply;
+      setBubbleContent(typingBubble, data.reply, data.ooc);
       renderSuggestions(data.suggestions);
     }
   } catch (err) {
     typingBubble.classList.remove("typing");
-    typingBubble.textContent = `[error] ${err.message}`;
+    setBubbleContent(typingBubble, `[error] ${err.message}`, false);
     typingBubble.parentElement.classList.add("msg-error");
   }
   scrollToBottom();

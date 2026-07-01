@@ -46,6 +46,7 @@ create table if not exists messages (
   chat_id bigint not null references chats(id) on delete cascade,
   role text not null check (role in ('user', 'assistant')),
   content text not null,
+  is_ooc boolean not null default false,
   created_at timestamptz not null default now()
 );
 

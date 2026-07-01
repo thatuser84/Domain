@@ -887,6 +887,25 @@ button { font-family: inherit; }
 
 .msg-error .msg-bubble { border-color: var(--danger); color: var(--danger); }
 
+.msg-ooc .msg-bubble {
+  border-style: dashed;
+  border-color: var(--violet);
+  background: rgba(124, 92, 255, 0.08);
+  font-style: italic;
+  color: var(--text-dim);
+}
+
+.ooc-tag {
+  display: block;
+  font-style: normal;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--violet);
+  margin-bottom: 4px;
+}
+
 .typing { opacity: 0.5; }
 
 .suggestions {
