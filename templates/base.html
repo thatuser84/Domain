@@ -47,7 +47,10 @@
         <div class="sidebar-footer">
           <div class="user-pill">
             <span class="user-avatar">{{ (session.get('user_email') or '?')[0]|upper }}</span>
-            <span class="user-email">{{ session.get('user_email') }}</span>
+            <span class="user-email">
+              {{ session.get('user_email') }}
+              {% if is_owner_account %}<span class="owner-badge" title="owner — every thread is guaranteed encrypted at rest">👑 owner</span>{% endif %}
+            </span>
             <form method="post" action="{{ url_for('logout') }}" class="logout-form">
               <button type="submit" class="logout-btn" title="log out">
                 <svg class="icon" viewBox="0 0 24 24"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>

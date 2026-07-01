@@ -95,9 +95,23 @@ STAFF_EMAILS = {
     e.strip().lower() for e in os.environ.get("STAFF_EMAILS", "").split(",") if e.strip()
 }
 
+# The single owner account. Distinct from staff — every thread this account touches is guaranteed
+# true-private (encrypted at rest), not just staff's usual treatment, and it gets its own badge in
+# the UI instead of blending in as generic staff.
+OWNER_EMAIL = os.environ.get("OWNER_EMAIL", "").strip().lower()
+
 
 def is_staff(email):
     return bool(email) and email.strip().lower() in STAFF_EMAILS
+
+
+def is_owner(email):
+    return bool(email) and bool(OWNER_EMAIL) and email.strip().lower() == OWNER_EMAIL
+
+
+@app.context_processor
+def inject_owner_flag():
+    return {"is_owner_account": is_owner(session.get("user_email"))}
 
 # ---------------------------------------------------------------------------
 # This is the "master prompt" — it gets prepended ahead of every character's
@@ -401,10 +415,11 @@ def decrypt_content(text):
 
 
 def is_trust_eligible(user_id):
-    """Staff always qualify. Everyone else needs a 7+ day old account with zero moderation flags
-    in the last 7 days — a brand new account can't trivially claim 'never been flagged' just by
-    having no history yet."""
-    if is_staff(session.get("user_email")):
+    """Staff and the owner always qualify. Everyone else needs a 7+ day old account with zero
+    moderation flags in the last 7 days — a brand new account can't trivially claim 'never been
+    flagged' just by having no history yet."""
+    email = session.get("user_email")
+    if is_staff(email) or is_owner(email):
         return True
 
     settings = get_user_settings(user_id)
@@ -431,7 +446,10 @@ def is_trust_eligible(user_id):
 
 
 def should_grant_true_private(user_id):
-    if is_staff(session.get("user_email")):
+    email = session.get("user_email")
+    if is_staff(email) or is_owner(email):
+        # Guaranteed, not a random draw — the owner's content is unconditionally encrypted at
+        # rest on every thread, not just a probabilistic reward like everyone else's.
         return True
     return is_trust_eligible(user_id) and random.random() < TRUE_PRIVATE_CHANCE
 
