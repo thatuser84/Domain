@@ -742,35 +742,26 @@ def call_roleplay_model(messages, user_id):
     return data["choices"][0]["message"]["content"]
 
 
-SUGGEST_REPLIES_TOOL = {
-    "type": "function",
-    "function": {
-        "name": "suggest_replies",
-        "description": "Suggest 2 to 4 short, distinct things the USER could say or do next to "
-        "keep this roleplay scene moving naturally.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "options": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "minItems": 2,
-                    "maxItems": 4,
-                    "description": "short suggested lines/actions, written from the user's point "
-                    "of view, e.g. \"ask her about the ring\" or \"step back and reach for the door\"",
-                }
-            },
-            "required": ["options"],
-        },
-    },
-}
+SUGGEST_REPLIES_SYSTEM_PROMPT = (
+    "You generate quick-reply suggestions for a roleplay chat app. Given a character sheet and "
+    "the recent conversation, suggest 2 to 4 short, distinct things the USER (not the character) "
+    "could say or do next to keep the scene moving naturally.\n\n"
+    "Respond with ONLY a JSON object, no other text, no markdown formatting: "
+    '{"options": ["...", "...", ...]}\n'
+    "Each option should be short (under 12 words), written from the user's point of view, and "
+    'distinct from the others — e.g. "ask her about the ring" or "step back and reach for the '
+    'door", not full sentences of dialogue.'
+)
 
 
 def generate_reply_suggestions(character, history, user_id):
-    """Forces a tool call on the user's own configured provider/model to get 2-4 quick-reply
-    options. Best-effort only — the free-text composer is always there regardless of whether
-    this works, so any failure (provider doesn't support tool calling, bad response, timeout,
-    no key configured) just means no suggestion chips show up. Never blocks sending a message."""
+    """Gets 2-4 quick-reply options from the user's own configured provider/model, via a plain
+    instruction-plus-JSON-parse prompt — same pattern as check_moderation/generate_character_tags,
+    deliberately NOT the OpenAI tools/tool_choice API, since that's not universally supported and
+    this needs to work with literally any chat-completions-shaped model. Best-effort only — the
+    free-text composer is always there regardless of whether this works, so any failure (bad
+    response, timeout, no key configured, a model that won't follow the JSON instruction) just
+    means no suggestion chips show up. Never blocks sending a message."""
     try:
         provider, base_url, api_key, model = get_llm_config(user_id)
         if not api_key or not base_url:
@@ -784,32 +775,39 @@ def generate_reply_suggestions(character, history, user_id):
             if character.get("minor_safe_mode")
             else ""
         )
-        prompt = (
+        user_content = (
             f"Character: {character['name']}\nPersona: {character['persona']}\n\n"
-            "Recent conversation:\n" + "\n".join(context_lines) + "\n\n"
-            "Call suggest_replies with 2 to 4 short, distinct things the USER (not the character) "
-            "could say or do next." + safety_note
+            "Recent conversation:\n" + "\n".join(context_lines) + safety_note
         )
         resp = requests.post(
             f"{base_url}/chat/completions",
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
             json={
                 "model": model,
-                "messages": [{"role": "user", "content": prompt}],
-                "tools": [SUGGEST_REPLIES_TOOL],
-                "tool_choice": {"type": "function", "function": {"name": "suggest_replies"}},
+                "messages": [
+                    {"role": "system", "content": SUGGEST_REPLIES_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_content},
+                ],
                 "max_tokens": 200,
                 "temperature": 0.9,
             },
             timeout=15,
         )
         resp.raise_for_status()
-        message = resp.json()["choices"][0]["message"]
-        tool_calls = message.get("tool_calls") or []
-        if not tool_calls:
-            return []
-        args = json.loads(tool_calls[0]["function"]["arguments"])
-        options = args.get("options") or []
+        raw = resp.json()["choices"][0]["message"]["content"].strip()
+        if raw.startswith("```"):
+            raw = raw.strip("`")
+            if raw.lower().startswith("json"):
+                raw = raw[4:]
+            raw = raw.strip()
+        # Some models wrap the JSON in a sentence despite instructions — pull out the object.
+        if not raw.startswith("{"):
+            start, end = raw.find("{"), raw.rfind("}")
+            if start == -1 or end == -1:
+                return []
+            raw = raw[start:end + 1]
+        data = json.loads(raw)
+        options = data.get("options") or []
         return [str(o).strip() for o in options if str(o).strip()][:4]
     except Exception:
         return []
