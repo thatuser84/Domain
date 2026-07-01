@@ -1246,7 +1246,9 @@ def send_message(chat_id):
     try:
         reply = call_roleplay_model(api_messages, session["user_id"])
     except requests.HTTPError as e:
-        return jsonify({"error": f"groq api error: {e.response.text}"}), 502
+        provider, _, _, _ = get_llm_config(session["user_id"])
+        provider_label = PROVIDER_PRESETS.get(provider, PROVIDER_PRESETS["custom"])["label"]
+        return jsonify({"error": f"{provider_label} api error: {e.response.text}"}), 502
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
