@@ -64,6 +64,12 @@ PROVIDER_PRESETS = {
         "default_model": "meta-llama/llama-3.3-70b-instruct",
         "keys_url": "https://openrouter.ai/keys",
     },
+    "freemodel": {
+        "label": "FreeModel.dev",
+        "base_url": "https://api.freemodel.dev/v1",
+        "default_model": "gpt-5.4",
+        "keys_url": "https://freemodel.dev",
+    },
     "custom": {
         "label": "Custom (OpenAI-compatible)",
         "base_url": None,
