@@ -37,6 +37,13 @@ where ch.character_id = m.character_id
   and m.chat_id is null;
 
 alter table messages alter column chat_id set not null;
+
+-- drop the old character_id-based policies BEFORE dropping the column they reference
+drop policy if exists "messages_select_own" on messages;
+drop policy if exists "messages_insert_own" on messages;
+drop policy if exists "messages_update_own" on messages;
+drop policy if exists "messages_delete_own" on messages;
+
 alter table messages drop column if exists character_id;
 
 -- ---------------------------------------------------------------------------
@@ -59,11 +66,7 @@ create policy "chats_insert_own" on chats for insert with check (auth.uid() = us
 create policy "chats_update_own" on chats for update using (auth.uid() = user_id);
 create policy "chats_delete_own" on chats for delete using (auth.uid() = user_id);
 
-drop policy if exists "messages_select_own" on messages;
-drop policy if exists "messages_insert_own" on messages;
-drop policy if exists "messages_update_own" on messages;
-drop policy if exists "messages_delete_own" on messages;
-
+-- (old character_id-based policies already dropped above, before the column drop)
 create policy "messages_select_own" on messages for select using (
   exists (select 1 from chats ch where ch.id = messages.chat_id and ch.user_id = auth.uid())
 );
