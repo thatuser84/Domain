@@ -430,6 +430,32 @@ def decrypt_content(text):
         return "[couldn't decrypt this message]"
 
 
+CHARACTER_ENCRYPTED_FIELDS = ("name", "persona", "scenario", "first_message")
+
+
+def should_encrypt_character(email):
+    """Staff and owner characters get the same at-rest encryption as their chats — same reasoning
+    as should_grant_true_private, extended to the character sheet itself, not just messages."""
+    return is_staff(email) or is_owner(email)
+
+
+def decrypt_character(character):
+    """Decrypts a character's free-text fields in place if they were encrypted. No-op for
+    everyone else's plaintext characters — decrypt_content already passes through untouched text.
+    Called at every read site so callers never have to think about which characters are
+    encrypted."""
+    if character is None:
+        return character
+    for field in CHARACTER_ENCRYPTED_FIELDS:
+        if character.get(field):
+            character[field] = decrypt_content(character[field])
+    return character
+
+
+def decrypt_characters(characters):
+    return [decrypt_character(c) for c in characters]
+
+
 def is_trust_eligible(user_id):
     """Staff and the owner always qualify. Everyone else needs a 7+ day old account with zero
     moderation flags in the last 7 days — a brand new account can't trivially claim 'never been
@@ -495,7 +521,7 @@ def get_owned_character(character_id):
     )
     if not res.data:
         abort(404)
-    return res.data[0]
+    return decrypt_character(res.data[0])
 
 
 def get_visible_character(character_id):
@@ -507,7 +533,7 @@ def get_visible_character(character_id):
     character = res.data[0]
     if character["user_id"] != session["user_id"] and character.get("visibility") != "public":
         abort(404)
-    return character
+    return decrypt_character(character)
 
 
 # ---------------------------------------------------------------------------
@@ -1009,7 +1035,7 @@ def index():
         .order("created_at", desc=True)
         .execute()
     )
-    return render_template("index.html", characters=res.data)
+    return render_template("index.html", characters=decrypt_characters(res.data))
 
 
 @app.route("/history")
@@ -1026,7 +1052,7 @@ def history():
     if chats:
         char_ids = list({c["character_id"] for c in chats})
         chars_res = db.table("characters").select("*").in_("id", char_ids).execute()
-        chars_by_id = {c["id"]: c for c in chars_res.data}
+        chars_by_id = {c["id"]: c for c in decrypt_characters(chars_res.data)}
         for c in chats:
             c["character"] = chars_by_id.get(c["character_id"])
         chats = [c for c in chats if c["character"] is not None]  # drop orphans defensively
@@ -1040,7 +1066,9 @@ def community():
     sort = request.args.get("sort", "hot")
 
     res = db.table("characters").select("*").eq("visibility", "public").execute()
-    characters = res.data
+    # Defensive only — staff/owner characters are always forced private, so encrypted characters
+    # should never actually reach this list, but decrypt_characters is a no-op on plaintext anyway.
+    characters = decrypt_characters(res.data)
 
     if query:
         characters = [
@@ -1111,15 +1139,19 @@ def new_character():
         # Best-effort auto-tagging for the community similarity signal — never blocks creation.
         tags = generate_character_tags(name, persona, scenario)
 
+        # Staff/owner character sheets get the same at-rest encryption as their chats. Moderation
+        # and tag generation already ran above on the plaintext variables, so this only affects
+        # what actually gets written to disk.
+        encrypt_sheet = should_encrypt_character(session.get("user_email"))
         insert_res = (
             db.table("characters")
             .insert(
                 {
                     "user_id": session["user_id"],
-                    "name": name,
-                    "persona": persona,
-                    "scenario": scenario,
-                    "first_message": first_message,
+                    "name": encrypt_content(name) if encrypt_sheet else name,
+                    "persona": encrypt_content(persona) if encrypt_sheet else persona,
+                    "scenario": (encrypt_content(scenario) if encrypt_sheet else scenario) if scenario else scenario,
+                    "first_message": (encrypt_content(first_message) if encrypt_sheet else first_message) if first_message else first_message,
                     "avatar": avatar,
                     "avatar_url": avatar_url,
                     "rating": mod["rating"],
@@ -1130,7 +1162,9 @@ def new_character():
             )
             .execute()
         )
-        character = insert_res.data[0]
+        # decrypt_character is a safe no-op on plaintext — this just guarantees whatever gets
+        # passed to create_chat_for_character below is plaintext, never double-encrypted.
+        character = decrypt_character(insert_res.data[0])
         chat_id = create_chat_for_character(character, session["user_id"])
 
         return redirect(url_for("chat", chat_id=chat_id))
@@ -1194,12 +1228,13 @@ def edit_character(character_id):
         # Re-tag since the persona/scenario may have changed meaningfully.
         tags = generate_character_tags(name, persona, scenario)
 
+        encrypt_sheet = should_encrypt_character(session.get("user_email"))
         db.table("characters").update(
             {
-                "name": name,
-                "persona": persona,
-                "scenario": scenario,
-                "first_message": first_message,
+                "name": encrypt_content(name) if encrypt_sheet else name,
+                "persona": encrypt_content(persona) if encrypt_sheet else persona,
+                "scenario": (encrypt_content(scenario) if encrypt_sheet else scenario) if scenario else scenario,
+                "first_message": (encrypt_content(first_message) if encrypt_sheet else first_message) if first_message else first_message,
                 "avatar": avatar,
                 "avatar_url": avatar_url,
                 "rating": mod["rating"],
@@ -1243,7 +1278,7 @@ def get_owned_chat(chat_id):
     char_res = db.table("characters").select("*").eq("id", chat_row["character_id"]).limit(1).execute()
     if not char_res.data:
         abort(404)
-    return chat_row, char_res.data[0]
+    return chat_row, decrypt_character(char_res.data[0])
 
 
 @app.route("/character/<int:character_id>")
