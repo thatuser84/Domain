@@ -47,6 +47,13 @@
     </select>
     <p class="hint">just a dial on tone/explicitness — you can change this any time from the chat screen.</p>
 
+    <label for="visibility">visibility</label>
+    <select id="visibility" name="visibility">
+      <option value="private" {% if (selected_visibility or 'private') == 'private' %}selected{% endif %}>private — only you can see/chat with this</option>
+      <option value="public" {% if selected_visibility == 'public' %}selected{% endif %}>public — listed in community, anyone can start their own chat with it</option>
+    </select>
+    <p class="hint">public just shares the character sheet — everyone still gets their own private conversation with it, nobody sees anyone else's chats.</p>
+
     <button type="submit" class="btn btn-primary btn-block">create &amp; start chat</button>
   </form>
 </div>

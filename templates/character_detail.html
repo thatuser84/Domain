@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}characterground — {{ character['name'] }}{% endblock %}
+{% block content %}
+<div class="page">
+  <div class="page-header">
+    <a class="btn btn-ghost" href="{{ url_for('index') if is_owner else url_for('community') }}">← back</a>
+  </div>
+
+  <div class="detail-header">
+    <div class="detail-avatar-wrap">
+      <div class="detail-avatar">{{ character['avatar'] if character['avatar'] else character['name'][0]|upper }}</div>
+    </div>
+    <div>
+      <h1>{{ character['name'] }}</h1>
+      <div class="detail-tags">
+        {% if character['minor_safe_mode'] %}
+          <span class="minor-safe-tag">minor-safe</span>
+        {% else %}
+          <span class="card-rating-tag">{{ character['rating'] }}</span>
+        {% endif %}
+        {% if character['visibility'] == 'public' %}<span class="card-rating-tag">public</span>{% endif %}
+        {% for tag in character['tags'] %}<span class="card-rating-tag">{{ tag }}</span>{% endfor %}
+      </div>
+      <p class="detail-persona">{{ character['persona'] }}</p>
+      {% if character['scenario'] %}<p class="detail-scenario">{{ character['scenario'] }}</p>{% endif %}
+    </div>
+    {% if is_owner %}
+      <form method="post" action="{{ url_for('delete_character', character_id=character['id']) }}" onsubmit="return confirm('delete {{ character['name'] }}? this wipes every chat thread with them.');">
+        <button type="submit" class="btn btn-ghost" style="color:var(--danger)">delete character</button>
+      </form>
+    {% endif %}
+  </div>
+
+  <div class="page-header" style="margin-top:32px">
+    <h2 style="margin:0;font-size:18px">your chats with {{ character['name'] }}</h2>
+    <form method="post" action="{{ url_for('new_chat', character_id=character['id']) }}">
+      <button type="submit" class="btn btn-primary">+ new chat</button>
+    </form>
+  </div>
+
+  {% if chats|length == 0 %}
+    <div class="empty-state">
+      <div class="empty-state-icon">✦</div>
+      <p>no chats yet — start your first one.</p>
+      <form method="post" action="{{ url_for('new_chat', character_id=character['id']) }}">
+        <button type="submit" class="btn btn-primary">+ new chat</button>
+      </form>
+    </div>
+  {% else %}
+    <div class="chat-list">
+      {% for c in chats %}
+        <div class="chat-list-row">
+          <a class="chat-list-link" href="{{ url_for('chat', chat_id=c['id']) }}">
+            <span class="chat-list-title">{{ c['title'] }}</span>
+            <span class="chat-list-time">{{ c['last_message_at'][:16].replace('T', ' ') }}</span>
+          </a>
+          <form method="post" action="{{ url_for('delete_chat', chat_id=c['id']) }}" onsubmit="return confirm('delete this chat thread?');">
+            <button type="submit" class="btn btn-icon" title="delete chat">
+              <svg class="icon" viewBox="0 0 24 24" style="width:14px;height:14px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </form>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -486,6 +486,92 @@ button { font-family: inherit; }
 }
 
 /* ---------------------------------------------------------------------- */
+/* character detail + community + chat list                              */
+/* ---------------------------------------------------------------------- */
+
+.detail-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.detail-avatar-wrap {
+  padding: 3px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), var(--violet));
+  flex-shrink: 0;
+}
+
+.detail-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--bg-elev-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  border: 2px solid var(--bg-elev);
+}
+
+.detail-header h1 { margin: 0 0 8px; font-size: 22px; }
+.detail-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.detail-persona { margin: 0 0 6px; font-size: 14px; color: var(--text-dim); line-height: 1.5; max-width: 640px; }
+.detail-scenario { margin: 0; font-size: 13px; color: var(--text-faint); line-height: 1.5; max-width: 640px; }
+
+.chat-list { display: flex; flex-direction: column; gap: 8px; }
+
+.chat-list-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 4px 4px 4px 16px;
+  transition: border-color 0.15s ease;
+}
+
+.chat-list-row:hover { border-color: var(--border-bright); }
+
+.chat-list-link {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 8px 12px 0;
+  min-width: 0;
+  gap: 12px;
+}
+
+.chat-list-title { font-size: 14px; font-weight: 600; }
+.chat-list-time { font-size: 12px; color: var(--text-faint); flex-shrink: 0; }
+
+.tab-row {
+  display: flex;
+  gap: 8px;
+  margin: 18px 0 22px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  padding: 10px 4px;
+  margin-right: 18px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-faint);
+  border-bottom: 2px solid transparent;
+}
+
+.tab:hover { color: var(--text-dim); }
+
+.tab-active { color: var(--accent-bright); border-bottom-color: var(--accent-bright); }
+
+.card-tags { font-size: 11px; color: var(--text-faint); margin: 4px 0 0 !important; }
+
+/* ---------------------------------------------------------------------- */
 /* forms                                                                  */
 /* ---------------------------------------------------------------------- */
 

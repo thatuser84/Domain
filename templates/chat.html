@@ -3,7 +3,7 @@
 {% block content %}
 <div class="chat-page">
   <div class="chat-header">
-    <a class="btn btn-ghost btn-icon" href="{{ url_for('index') }}" title="back">
+    <a class="btn btn-ghost btn-icon" href="{{ url_for('character_detail', character_id=character['id']) }}" title="back">
       <svg class="icon" viewBox="0 0 24 24"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
     </a>
     <div class="chat-title">
@@ -27,7 +27,7 @@
           {% endfor %}
         </select>
       {% endif %}
-      <form method="post" action="{{ url_for('reset_chat', character_id=character['id']) }}" onsubmit="return confirm('reset this chat? history will be wiped.');">
+      <form method="post" action="{{ url_for('reset_chat', chat_id=chat['id']) }}" onsubmit="return confirm('reset this chat? history will be wiped.');">
         <button type="submit" class="btn btn-ghost btn-icon" title="reset chat">
           <svg class="icon" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
         </button>
@@ -56,6 +56,7 @@
 </div>
 
 <script>
+  const chatId = {{ chat['id'] }};
   const characterId = {{ character['id'] }};
   const characterAvatar = {{ (character['avatar'] if character['avatar'] else character['name'][0]|upper) | tojson }};
 </script>
@@ -67,7 +68,7 @@
 
   if (ratingSelect) ratingSelect.addEventListener("change", async () => {
     try {
-      await fetch(`/chat/${characterId}/rating`, {
+      await fetch(`/character/${characterId}/rating`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rating: ratingSelect.value }),

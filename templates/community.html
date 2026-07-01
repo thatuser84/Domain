@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}characterground — community{% endblock %}
+{% block content %}
+<div class="page">
+  <div class="page-header">
+    <div>
+      <h1>community</h1>
+      <p class="page-subtitle">public characters made by other people — chatting with one starts your own private thread</p>
+    </div>
+  </div>
+
+  <form method="get" class="search-bar">
+    <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input type="text" name="q" value="{{ query }}" placeholder="search public characters..." autocomplete="off">
+    <input type="hidden" name="sort" value="{{ sort }}">
+  </form>
+
+  <div class="tab-row">
+    <a class="tab {{ 'tab-active' if sort == 'hot' }}" href="{{ url_for('community', q=query, sort='hot') }}">🔥 hot</a>
+    <a class="tab {{ 'tab-active' if sort == 'suggested' }}" href="{{ url_for('community', q=query, sort='suggested') }}">✦ suggested for you</a>
+  </div>
+
+  {% if characters|length == 0 %}
+    <div class="empty-state">
+      <div class="empty-state-icon">✦</div>
+      {% if sort == 'suggested' %}
+        <p>make a few characters of your own first — suggestions are based on what you tend to create.</p>
+      {% else %}
+        <p>nobody's published a public character yet. be the first.</p>
+      {% endif %}
+    </div>
+  {% else %}
+    <div class="card-grid">
+      {% for c in characters %}
+        <div class="card">
+          <a class="card-link" href="{{ url_for('character_detail', character_id=c['id']) }}">
+            <div class="card-avatar-wrap">
+              <div class="card-avatar">{{ c['avatar'] if c['avatar'] else c['name'][0]|upper }}</div>
+            </div>
+            <div class="card-body">
+              <h2>{{ c['name'] }}</h2>
+              <div>
+                {% if c['minor_safe_mode'] %}
+                  <span class="minor-safe-tag">minor-safe</span>
+                {% else %}
+                  <span class="card-rating-tag">{{ c['rating'] }}</span>
+                {% endif %}
+              </div>
+              <p>{{ c['persona'][:110] }}{% if c['persona']|length > 110 %}…{% endif %}</p>
+              {% if c['tags'] %}
+                <p class="card-tags">{% for tag in c['tags'][:4] %}#{{ tag }} {% endfor %}</p>
+              {% endif %}
+            </div>
+          </a>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

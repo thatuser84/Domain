@@ -1,5 +1,8 @@
 import os
 import json
+import math
+import re as _re
+from collections import Counter
 from functools import wraps
 from datetime import datetime
 
@@ -204,8 +207,6 @@ BLOCKED_NOTICE = (
 # numeric ages got dropped because it was too easy to dodge with a slightly different phrasing of
 # the same age. This keyword check is just a trigger to force the LLM to actually run (even for
 # staff) rather than a judgment mechanism in its own right.
-import re as _re
-
 _MINOR_KEYWORDS = _re.compile(
     r"\b(child|kid|toddler|infant|underage|minor|schoolgirl|schoolboy|middle\s*school|"
     r"elementary\s*school|preteen|pre-teen)\b",
@@ -312,6 +313,157 @@ def get_owned_character(character_id):
     if not res.data:
         abort(404)
     return res.data[0]
+
+
+def get_visible_character(character_id):
+    """Fetch a character you either own OR that's public — for viewing/starting a chat with
+    someone else's community character. Editing/deleting still requires get_owned_character."""
+    res = db.table("characters").select("*").eq("id", character_id).limit(1).execute()
+    if not res.data:
+        abort(404)
+    character = res.data[0]
+    if character["user_id"] != session["user_id"] and character.get("visibility") != "public":
+        abort(404)
+    return character
+
+
+# ---------------------------------------------------------------------------
+# Community / discovery — lightweight TF-IDF cosine similarity computed in pure Python (no
+# embeddings API, no heavy ML deps like numpy/sklearn that would strain a free-tier host). Good
+# enough for a personal-scale character list; would want a real vector index if this ever needs
+# to scale to thousands of characters.
+# ---------------------------------------------------------------------------
+
+_WORD_RE = _re.compile(r"[a-z']{2,}")
+
+
+def _tokenize(text):
+    return _WORD_RE.findall((text or "").lower())
+
+
+def _character_text(c):
+    return " ".join(
+        filter(
+            None,
+            [
+                c.get("name", ""),
+                c.get("persona", ""),
+                c.get("scenario") or "",
+                " ".join(c.get("tags") or []),
+            ],
+        )
+    )
+
+
+def rank_by_similarity(profile_characters, candidates):
+    """Rank `candidates` (public characters) by TF-IDF cosine similarity to the combined text of
+    `profile_characters` (the current user's own characters — their "interests"). Highest first."""
+    if not candidates:
+        return []
+
+    candidate_docs = [_tokenize(_character_text(c)) for c in candidates]
+    profile_tokens = []
+    for c in profile_characters:
+        profile_tokens.extend(_tokenize(_character_text(c)))
+
+    if not profile_tokens:
+        return candidates  # no interest signal yet — leave in whatever order they came in
+
+    all_docs = candidate_docs + [profile_tokens]
+    doc_freq = Counter()
+    for doc in all_docs:
+        for word in set(doc):
+            doc_freq[word] += 1
+    n_docs = len(all_docs)
+    idf = {word: math.log((n_docs + 1) / (freq + 1)) + 1 for word, freq in doc_freq.items()}
+
+    def vectorize(tokens):
+        tf = Counter(tokens)
+        return {word: count * idf.get(word, 0) for word, count in tf.items()}
+
+    def cosine(vec_a, vec_b):
+        common = set(vec_a) & set(vec_b)
+        dot = sum(vec_a[w] * vec_b[w] for w in common)
+        mag_a = math.sqrt(sum(v * v for v in vec_a.values())) or 1
+        mag_b = math.sqrt(sum(v * v for v in vec_b.values())) or 1
+        return dot / (mag_a * mag_b)
+
+    profile_vec = vectorize(profile_tokens)
+    scored = [
+        (cosine(profile_vec, vectorize(doc)), c) for c, doc in zip(candidates, candidate_docs)
+    ]
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+    return [c for _, c in scored]
+
+
+def attach_hot_scores(characters):
+    """Mutates each character dict in place with a `_message_count` field (total messages across
+    all users' chats with that character) and returns the list sorted by it, most active first."""
+    if not characters:
+        return characters
+    char_ids = [c["id"] for c in characters]
+    chats_res = db.table("chats").select("id,character_id").in_("character_id", char_ids).execute()
+    chat_to_char = {row["id"]: row["character_id"] for row in chats_res.data}
+    counts = Counter()
+    chat_ids = list(chat_to_char.keys())
+    if chat_ids:
+        msgs_res = db.table("messages").select("chat_id").in_("chat_id", chat_ids).execute()
+        for row in msgs_res.data:
+            char_id = chat_to_char.get(row["chat_id"])
+            if char_id is not None:
+                counts[char_id] += 1
+    for c in characters:
+        c["_message_count"] = counts.get(c["id"], 0)
+    characters.sort(key=lambda c: c["_message_count"], reverse=True)
+    return characters
+
+
+TAG_GENERATION_PROMPT = """Given a fiction roleplay character's name and persona/scenario, output \
+3 to 6 short genre/theme tags describing it — think bookstore-shelf categories and vibe words \
+(examples: "romance", "noir", "fantasy", "slow-burn", "vampire", "workplace", "villain", \
+"found-family", "sci-fi", "enemies-to-lovers"). Lowercase, one to two words each, no hashtags, no \
+explanation. Respond with ONLY a JSON array of strings, nothing else, e.g. ["romance", "vampire", \
+"slow-burn"]."""
+
+
+def generate_character_tags(name, persona, scenario):
+    """Best-effort auto-tagging for the community/discovery similarity signal. Reuses the same
+    moderation LLM endpoint since it's already configured — this is a low-stakes convenience
+    feature, not a safety check, so it fails silently (empty tags) rather than blocking anything."""
+    if not MODERATION_API_KEY:
+        return []
+    text = f"Name: {name}\nPersona: {persona}" + (f"\nScenario: {scenario}" if scenario else "")
+    try:
+        resp = requests.post(
+            f"{MODERATION_BASE_URL}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {MODERATION_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": MODERATION_MODEL,
+                "messages": [
+                    {"role": "system", "content": TAG_GENERATION_PROMPT},
+                    {"role": "user", "content": text},
+                ],
+                "max_tokens": 100,
+                "temperature": 0.3,
+            },
+            timeout=10,
+        )
+        resp.raise_for_status()
+        raw = resp.json()["choices"][0]["message"]["content"].strip()
+        if raw.startswith("```"):
+            raw = raw.strip("`")
+            if raw.lower().startswith("json"):
+                raw = raw[4:]
+            raw = raw.strip()
+        tags = json.loads(raw)
+        if isinstance(tags, list):
+            return [str(t).strip().lower()[:30] for t in tags if str(t).strip()][:6]
+        return []
+    except Exception:
+        return []
 
 
 # ---------------------------------------------------------------------------
@@ -504,6 +656,22 @@ def settings():
     )
 
 
+def create_chat_for_character(character, user_id, title="Chat"):
+    """Creates a new conversation thread for a character and seeds it with the character's
+    opening line, if it has one. Returns the new chat's id."""
+    chat_res = (
+        db.table("chats")
+        .insert({"character_id": character["id"], "user_id": user_id, "title": title})
+        .execute()
+    )
+    chat_id = chat_res.data[0]["id"]
+    if character.get("first_message"):
+        db.table("messages").insert(
+            {"chat_id": chat_id, "role": "assistant", "content": character["first_message"]}
+        ).execute()
+    return chat_id
+
+
 @app.route("/")
 @login_required
 def index():
@@ -515,6 +683,39 @@ def index():
         .execute()
     )
     return render_template("index.html", characters=res.data)
+
+
+@app.route("/community")
+@login_required
+def community():
+    query = (request.args.get("q") or "").strip().lower()
+    sort = request.args.get("sort", "hot")
+
+    res = db.table("characters").select("*").eq("visibility", "public").execute()
+    characters = res.data
+
+    if query:
+        characters = [
+            c for c in characters
+            if query in c["name"].lower()
+            or query in c["persona"].lower()
+            or query in " ".join(c.get("tags") or []).lower()
+        ]
+
+    if sort == "suggested":
+        own_res = (
+            db.table("characters")
+            .select("*")
+            .eq("user_id", session["user_id"])
+            .execute()
+        )
+        characters = rank_by_similarity(own_res.data, characters)
+    else:
+        characters = attach_hot_scores(characters)
+
+    return render_template(
+        "community.html", characters=characters, query=request.args.get("q", ""), sort=sort
+    )
 
 
 @app.route("/character/new", methods=["GET", "POST"])
@@ -530,6 +731,7 @@ def new_character():
         scenario = request.form.get("scenario", "").strip()
         avatar = request.form.get("avatar", "").strip()
         first_message = request.form.get("first_message", "").strip()
+        visibility = "public" if request.form.get("visibility") == "public" else "private"
 
         form_state = dict(
             rating_levels=RATING_LEVELS,
@@ -540,6 +742,7 @@ def new_character():
             avatar=avatar,
             first_message=first_message,
             selected_rating=rating,
+            selected_visibility=visibility,
         )
 
         minor_safe_confirmed = request.form.get("minor_safe_confirmed") == "1"
@@ -609,6 +812,9 @@ def new_character():
                     **form_state,
                 ), 400
 
+        # Best-effort auto-tagging for the community similarity signal — never blocks creation.
+        tags = generate_character_tags(name, persona, scenario)
+
         insert_res = (
             db.table("characters")
             .insert(
@@ -621,18 +827,16 @@ def new_character():
                     "avatar": avatar,
                     "rating": rating,
                     "minor_safe_mode": minor_safe_mode,
+                    "visibility": visibility,
+                    "tags": tags,
                 }
             )
             .execute()
         )
-        character_id = insert_res.data[0]["id"]
+        character = insert_res.data[0]
+        chat_id = create_chat_for_character(character, session["user_id"])
 
-        if first_message:
-            db.table("messages").insert(
-                {"character_id": character_id, "role": "assistant", "content": first_message}
-            ).execute()
-
-        return redirect(url_for("chat", character_id=character_id))
+        return redirect(url_for("chat", chat_id=chat_id))
 
     return render_template(
         "create_character.html", rating_levels=RATING_LEVELS, rating_labels=RATING_LABELS
@@ -646,20 +850,56 @@ def delete_character(character_id):
     return redirect(url_for("index"))
 
 
-@app.route("/chat/<int:character_id>")
+def get_owned_chat(chat_id):
+    """Fetch a chat thread owned by the logged-in user, 404ing otherwise, along with its character."""
+    res = db.table("chats").select("*").eq("id", chat_id).eq("user_id", session["user_id"]).limit(1).execute()
+    if not res.data:
+        abort(404)
+    chat_row = res.data[0]
+    char_res = db.table("characters").select("*").eq("id", chat_row["character_id"]).limit(1).execute()
+    if not char_res.data:
+        abort(404)
+    return chat_row, char_res.data[0]
+
+
+@app.route("/character/<int:character_id>")
 @login_required
-def chat(character_id):
-    character = get_owned_character(character_id)
-    msgs_res = (
-        db.table("messages")
+def character_detail(character_id):
+    """A character's thread list — pick an existing conversation or start a new one."""
+    character = get_visible_character(character_id)
+    chats_res = (
+        db.table("chats")
         .select("*")
         .eq("character_id", character_id)
-        .order("id", desc=False)
+        .eq("user_id", session["user_id"])
+        .order("last_message_at", desc=True)
         .execute()
+    )
+    is_owner = character["user_id"] == session["user_id"]
+    return render_template(
+        "character_detail.html", character=character, chats=chats_res.data, is_owner=is_owner
+    )
+
+
+@app.route("/character/<int:character_id>/chats/new", methods=["POST"])
+@login_required
+def new_chat(character_id):
+    character = get_visible_character(character_id)
+    chat_id = create_chat_for_character(character, session["user_id"])
+    return redirect(url_for("chat", chat_id=chat_id))
+
+
+@app.route("/chat/<int:chat_id>")
+@login_required
+def chat(chat_id):
+    chat_row, character = get_owned_chat(chat_id)
+    msgs_res = (
+        db.table("messages").select("*").eq("chat_id", chat_id).order("id", desc=False).execute()
     )
     current_rating = character["rating"] if character["rating"] in RATING_LEVELS else "explicit"
     return render_template(
         "chat.html",
+        chat=chat_row,
         character=character,
         messages=msgs_res.data,
         rating_levels=RATING_LEVELS,
@@ -668,7 +908,15 @@ def chat(character_id):
     )
 
 
-@app.route("/chat/<int:character_id>/rating", methods=["POST"])
+@app.route("/chat/<int:chat_id>/delete", methods=["POST"])
+@login_required
+def delete_chat(chat_id):
+    chat_row, character = get_owned_chat(chat_id)
+    db.table("chats").delete().eq("id", chat_id).execute()
+    return redirect(url_for("character_detail", character_id=character["id"]))
+
+
+@app.route("/character/<int:character_id>/rating", methods=["POST"])
 @login_required
 def update_rating(character_id):
     character = get_owned_character(character_id)
@@ -684,18 +932,16 @@ def update_rating(character_id):
     return jsonify({"ok": True, "rating": rating})
 
 
-@app.route("/chat/<int:character_id>/send", methods=["POST"])
+@app.route("/chat/<int:chat_id>/send", methods=["POST"])
 @login_required
-def send_message(character_id):
-    character = get_owned_character(character_id)
+def send_message(chat_id):
+    chat_row, character = get_owned_chat(chat_id)
 
     user_text = (request.json or {}).get("message", "").strip()
     if not user_text:
         return jsonify({"error": "empty message"}), 400
 
-    db.table("messages").insert(
-        {"character_id": character_id, "role": "user", "content": user_text}
-    ).execute()
+    db.table("messages").insert({"chat_id": chat_id, "role": "user", "content": user_text}).execute()
 
     staff = is_staff(session.get("user_email"))
     character_context = (
@@ -710,17 +956,17 @@ def send_message(character_id):
         # not a violation. Only block on minors_sexual and the other two hard categories.
         if flagged and category != "minors_nonsexual":
             log_moderation_flag(
-                session["user_id"], character_id, "user_message", user_text, category, reasoning
+                session["user_id"], character["id"], "user_message", user_text, category, reasoning
             )
             db.table("messages").insert(
-                {"character_id": character_id, "role": "assistant", "content": BLOCKED_NOTICE}
+                {"chat_id": chat_id, "role": "assistant", "content": BLOCKED_NOTICE}
             ).execute()
             return jsonify({"reply": BLOCKED_NOTICE})
 
     history_res = (
         db.table("messages")
         .select("role,content")
-        .eq("character_id", character_id)
+        .eq("chat_id", chat_id)
         .order("id", desc=False)
         .execute()
     )
@@ -739,27 +985,26 @@ def send_message(character_id):
         reply_flagged, reply_category, reply_reasoning = check_moderation(reply, context=character_context)
         if reply_flagged and reply_category != "minors_nonsexual":
             log_moderation_flag(
-                session["user_id"], character_id, "assistant_reply", reply, reply_category, reply_reasoning
+                session["user_id"], character["id"], "assistant_reply", reply, reply_category, reply_reasoning
             )
             reply = BLOCKED_NOTICE
 
-    db.table("messages").insert(
-        {"character_id": character_id, "role": "assistant", "content": reply}
-    ).execute()
+    db.table("messages").insert({"chat_id": chat_id, "role": "assistant", "content": reply}).execute()
+    db.table("chats").update({"last_message_at": datetime.utcnow().isoformat()}).eq("id", chat_id).execute()
 
     return jsonify({"reply": reply})
 
 
-@app.route("/chat/<int:character_id>/reset", methods=["POST"])
+@app.route("/chat/<int:chat_id>/reset", methods=["POST"])
 @login_required
-def reset_chat(character_id):
-    character = get_owned_character(character_id)
-    db.table("messages").delete().eq("character_id", character_id).execute()
+def reset_chat(chat_id):
+    chat_row, character = get_owned_chat(chat_id)
+    db.table("messages").delete().eq("chat_id", chat_id).execute()
     if character.get("first_message"):
         db.table("messages").insert(
-            {"character_id": character_id, "role": "assistant", "content": character["first_message"]}
+            {"chat_id": chat_id, "role": "assistant", "content": character["first_message"]}
         ).execute()
-    return redirect(url_for("chat", character_id=character_id))
+    return redirect(url_for("chat", chat_id=chat_id))
 
 
 if __name__ == "__main__":

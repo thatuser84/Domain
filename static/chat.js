@@ -53,7 +53,7 @@ composer.addEventListener("submit", async (e) => {
   typingBubble.classList.add("typing");
 
   try {
-    const res = await fetch(`/chat/${characterId}/send`, {
+    const res = await fetch(`/chat/${chatId}/send`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: text }),
