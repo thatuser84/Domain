@@ -134,6 +134,13 @@ real-world threats or doxxing of a specific identifiable person.
 Do NOT flag anything else. Ordinary fictional smut, gore, taboo fantasy, dark themes, fictional \
 non-con between adult characters — none of that is your concern.
 
+You may be given a "CHARACTER CONTEXT" block ahead of the actual "MESSAGE TO CLASSIFY" — that's the \
+persona/scenario of the character this message belongs to. Use it to inform your judgment of the \
+message: a message that looks benign in isolation can still be minors_sexual_content if the context \
+establishes the character as a minor and the message is sexual or escalating toward sexual content. \
+Only the MESSAGE TO CLASSIFY is what you're flagging — the context block itself is background, not \
+the thing being judged, but don't ignore what it tells you.
+
 Respond with ONLY a JSON object, nothing else:
 {"flag": true or false, "category": "minors_sexual_content" | "real_person_nonconsensual" | \
 "illegal_real_world_content" | "none", "reasoning": "one short sentence"}
@@ -145,8 +152,13 @@ BLOCKED_NOTICE = (
 )
 
 
-def check_moderation(text):
+def check_moderation(text, context=None):
     """Classify text against the narrow prohibited-content categories above.
+
+    `context` is the character sheet (persona/scenario) for the chat this text belongs to, if any.
+    A message in isolation can look completely benign while still being a violation once you know
+    the character it's addressed to/from is established as a minor — the classifier needs that
+    context to catch it, not just the bare message text.
 
     Fails OPEN on any error (timeout, bad response, provider down, no key configured) — returns
     not-flagged rather than raising. Moderation is a backstop, not the only thing standing between
@@ -154,6 +166,9 @@ def check_moderation(text):
     """
     if not MODERATION_API_KEY:
         return False, "none", "moderation not configured"
+
+    user_content = text if not context else f"--- CHARACTER CONTEXT ---\n{context}\n\n--- MESSAGE TO CLASSIFY ---\n{text}"
+
     try:
         resp = requests.post(
             f"{MODERATION_BASE_URL}/chat/completions",
@@ -165,7 +180,7 @@ def check_moderation(text):
                 "model": MODERATION_MODEL,
                 "messages": [
                     {"role": "system", "content": MODERATION_SYSTEM_PROMPT},
-                    {"role": "user", "content": text},
+                    {"role": "user", "content": user_content},
                 ],
                 "max_tokens": 150,
                 "temperature": 0,
@@ -553,9 +568,13 @@ def send_message(character_id):
     ).execute()
 
     staff = is_staff(session.get("user_email"))
+    character_context = (
+        f"Name: {character['name']}\nPersona: {character['persona']}"
+        + (f"\nScenario: {character['scenario']}" if character["scenario"] else "")
+    )
 
     if not staff:
-        flagged, category, reasoning = check_moderation(user_text)
+        flagged, category, reasoning = check_moderation(user_text, context=character_context)
         if flagged:
             log_moderation_flag(
                 session["user_id"], character_id, "user_message", user_text, category, reasoning
@@ -584,7 +603,7 @@ def send_message(character_id):
         return jsonify({"error": str(e)}), 500
 
     if not staff:
-        reply_flagged, reply_category, reply_reasoning = check_moderation(reply)
+        reply_flagged, reply_category, reply_reasoning = check_moderation(reply, context=character_context)
         if reply_flagged:
             log_moderation_flag(
                 session["user_id"], character_id, "assistant_reply", reply, reply_category, reply_reasoning
