@@ -109,9 +109,18 @@ def is_owner(email):
     return bool(email) and bool(OWNER_EMAIL) and email.strip().lower() == OWNER_EMAIL
 
 
+def resolve_character_visibility(requested_visibility, email):
+    """Staff and the owner can't publish characters to the community, period — their character
+    library stays private regardless of what the form says."""
+    if is_staff(email) or is_owner(email):
+        return "private"
+    return requested_visibility
+
+
 @app.context_processor
 def inject_owner_flag():
-    return {"is_owner_account": is_owner(session.get("user_email"))}
+    email = session.get("user_email")
+    return {"is_owner_account": is_owner(email), "is_trusted_account": is_staff(email) or is_owner(email)}
 
 # ---------------------------------------------------------------------------
 # This is the "master prompt" — it gets prepended ahead of every character's
@@ -1070,7 +1079,9 @@ def new_character():
         scenario = request.form.get("scenario", "").strip()
         avatar = request.form.get("avatar", "").strip()
         first_message = request.form.get("first_message", "").strip()
-        visibility = "public" if request.form.get("visibility") == "public" else "private"
+        visibility = resolve_character_visibility(
+            "public" if request.form.get("visibility") == "public" else "private", session.get("user_email")
+        )
         minor_safe_confirmed = request.form.get("minor_safe_confirmed") == "1"
 
         form_state = dict(
@@ -1144,7 +1155,9 @@ def edit_character(character_id):
         scenario = request.form.get("scenario", "").strip()
         avatar = request.form.get("avatar", "").strip()
         first_message = request.form.get("first_message", "").strip()
-        visibility = "public" if request.form.get("visibility") == "public" else "private"
+        visibility = resolve_character_visibility(
+            "public" if request.form.get("visibility") == "public" else "private", session.get("user_email")
+        )
         # Already-locked characters don't need to re-confirm every edit — only a fresh minors_nonsexual
         # detection on a not-yet-locked character needs the checkbox.
         minor_safe_confirmed = (

@@ -52,11 +52,15 @@
     <p class="hint">just a dial on tone/explicitness — you can change this any time from the chat screen.</p>
 
     <label for="visibility">visibility</label>
-    <select id="visibility" name="visibility">
+    <select id="visibility" name="visibility" {% if is_trusted_account %}disabled{% endif %}>
       <option value="private" {% if (selected_visibility or 'private') == 'private' %}selected{% endif %}>private — only you can see/chat with this</option>
-      <option value="public" {% if selected_visibility == 'public' %}selected{% endif %}>public — listed in community, anyone can start their own chat with it</option>
+      <option value="public" {% if selected_visibility == 'public' %}selected{% endif %} {% if is_trusted_account %}disabled{% endif %}>public — listed in community, anyone can start their own chat with it</option>
     </select>
-    <p class="hint">public just shares the character sheet — everyone still gets their own private conversation with it, nobody sees anyone else's chats.</p>
+    {% if is_trusted_account %}
+      <p class="hint">staff/owner characters always stay private — not eligible for community publishing.</p>
+    {% else %}
+      <p class="hint">public just shares the character sheet — everyone still gets their own private conversation with it, nobody sees anyone else's chats.</p>
+    {% endif %}
 
     <button type="submit" class="btn btn-primary btn-block">{{ "save changes" if editing_character_id else "create & start chat" }}</button>
   </form>
