@@ -1,0 +1,6 @@
+name = "characterground-proxy"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+# Free plan: this deploys to https://characterground-proxy.<your-subdomain>.workers.dev
+# No routes/custom domain configured here — none needed for the free workers.dev path.
