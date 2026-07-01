@@ -69,8 +69,10 @@ create index if not exists moderation_flags_created_at_idx on moderation_flags(c
 -- to whoever runs this instance.
 create table if not exists user_settings (
   user_id uuid primary key references auth.users(id) on delete cascade,
-  groq_api_key text,
-  groq_model text,
+  provider text not null default 'groq',
+  base_url text,
+  api_key text,
+  model text,
   terms_accepted_at timestamptz,
   updated_at timestamptz not null default now()
 );

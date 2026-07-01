@@ -13,8 +13,8 @@
 
   {% if not has_key %}
     <div class="banner banner-warn">
-      you haven't added a groq api key yet — your chats won't work until you do.
-      it's free, takes a minute: <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a>.
+      you haven't added an api key yet — your chats won't work until you do.
+      groq's free tier is the easiest way to start: <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a>.
     </div>
   {% endif %}
 
@@ -24,16 +24,51 @@
   </p>
 
   <form method="post" class="form">
-    <label for="groq_api_key">your groq api key {% if has_key %}<span class="hint">(currently: {{ masked_key }})</span>{% endif %}</label>
-    <input type="password" id="groq_api_key" name="groq_api_key" placeholder="{{ 'leave blank to keep current key' if has_key else 'gsk_...' }}" autocomplete="off">
+    <label for="provider">provider</label>
+    <select id="provider" name="provider">
+      {% for key, p in providers.items() %}
+        <option value="{{ key }}" {% if key == current_provider %}selected{% endif %}>{{ p.label }}</option>
+      {% endfor %}
+    </select>
 
-    <label for="groq_model">model</label>
-    <input type="text" id="groq_model" name="groq_model" value="{{ current_model }}">
-    <p class="hint">defaults to <code>llama-3.3-70b-versatile</code> — good balance of smart + loose for roleplay.
-      <code>openai/gpt-oss-120b</code> is smarter but more conservative. full list at
-      <a href="https://console.groq.com/docs/models" target="_blank" rel="noopener">console.groq.com/docs/models</a>.</p>
+    <div id="custom-url-row">
+      <label for="base_url">base url</label>
+      <input type="text" id="base_url" name="base_url" placeholder="https://your-endpoint.example.com/v1" value="{{ current_base_url }}">
+      <p class="hint">any OpenAI-compatible <code>/chat/completions</code> endpoint works — a self-hosted model, a proxy, another provider entirely.</p>
+    </div>
+
+    <label for="api_key">api key {% if has_key %}<span class="hint">(currently: {{ masked_key }})</span>{% endif %}</label>
+    <input type="password" id="api_key" name="api_key" placeholder="{{ 'leave blank to keep current key' if has_key else 'sk-...' }}" autocomplete="off">
+    <p class="hint" id="keys-url-hint"></p>
+
+    <label for="model">model</label>
+    <input type="text" id="model" name="model" value="{{ current_model }}">
+    <p class="hint">defaults to a sensible model for whichever provider you pick above — change it any time.</p>
 
     <button type="submit" class="btn btn-primary btn-block">save</button>
   </form>
 </div>
+
+<script>
+  const KEYS_URLS = {
+    groq: "https://console.groq.com/keys",
+    openai: "https://platform.openai.com/api-keys",
+    openrouter: "https://openrouter.ai/keys",
+    custom: "",
+  };
+
+  const providerSelect = document.getElementById("provider");
+  const customUrlRow = document.getElementById("custom-url-row");
+  const keysHint = document.getElementById("keys-url-hint");
+
+  function updateProviderUI() {
+    const provider = providerSelect.value;
+    customUrlRow.style.display = provider === "custom" ? "" : "none";
+    const url = KEYS_URLS[provider];
+    keysHint.innerHTML = url ? `grab a key at <a href="${url}" target="_blank" rel="noopener">${url.replace('https://', '')}</a>.` : "";
+  }
+
+  providerSelect.addEventListener("change", updateProviderUI);
+  updateProviderUI();
+</script>
 {% endblock %}

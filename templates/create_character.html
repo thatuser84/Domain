@@ -1,30 +1,32 @@
 {% extends "base.html" %}
-{% block title %}characterground — new character{% endblock %}
+{% block title %}characterground — {{ "edit character" if editing_character_id else "new character" }}{% endblock %}
 {% block content %}
 <div class="page page-narrow">
   <div class="page-header">
-    <h1>new character</h1>
-    <a class="btn btn-ghost" href="{{ url_for('index') }}">cancel</a>
+    <h1>{{ "edit " + name if editing_character_id and name else "edit character" if editing_character_id else "new character" }}</h1>
+    <a class="btn btn-ghost" href="{{ url_for('character_detail', character_id=editing_character_id) if editing_character_id else url_for('index') }}">cancel</a>
   </div>
 
   {% if error %}
     <div class="banner banner-warn">{{ error }}</div>
   {% endif %}
 
-  <form method="post" class="form" enctype="multipart/form-data">
+  <form method="post" action="{{ url_for('edit_character', character_id=editing_character_id) if editing_character_id else url_for('new_character') }}" class="form" enctype="multipart/form-data">
     {% if offer_minor_safe %}
       <label class="minor-safe-check">
         <input type="checkbox" name="minor_safe_confirmed" value="1">
-        this is a non-sexual story — create in <strong>minor-safe mode</strong> (permanently locks
+        this is a non-sexual story — save in <strong>minor-safe mode</strong> (permanently locks
         this character out of sexual content, overrides the rating dial, can't be undone later)
       </label>
     {% endif %}
     <div class="avatar-preview-row">
-      <div class="avatar-preview" id="avatar-preview">{{ avatar if avatar else "?" }}</div>
+      <div class="avatar-preview" id="avatar-preview">
+        {% if current_avatar_url %}<img src="{{ current_avatar_url }}" alt="">{% else %}{{ avatar if avatar else "?" }}{% endif %}
+      </div>
       <div style="flex:1">
         <label for="avatar" style="margin-top:0">avatar (emoji or single letter, optional)</label>
         <input type="text" id="avatar" name="avatar" maxlength="2" placeholder="🦊" value="{{ avatar or '' }}">
-        <label for="avatar_image">or upload a picture instead (png/jpg/webp/gif, 3MB max)</label>
+        <label for="avatar_image">{{ "replace the picture (optional, leave blank to keep it)" if current_avatar_url else "or upload a picture instead" }} (png/jpg/webp/gif, 3MB max)</label>
         <input type="file" id="avatar_image" name="avatar_image" accept="image/png,image/jpeg,image/webp,image/gif">
       </div>
     </div>
@@ -56,7 +58,7 @@
     </select>
     <p class="hint">public just shares the character sheet — everyone still gets their own private conversation with it, nobody sees anyone else's chats.</p>
 
-    <button type="submit" class="btn btn-primary btn-block">create &amp; start chat</button>
+    <button type="submit" class="btn btn-primary btn-block">{{ "save changes" if editing_character_id else "create & start chat" }}</button>
   </form>
 </div>
 
@@ -65,9 +67,11 @@
   const avatarInput = document.getElementById("avatar");
   const avatarImageInput = document.getElementById("avatar_image");
   const preview = document.getElementById("avatar-preview");
+  const hasCurrentAvatarUrl = {{ (current_avatar_url is defined and current_avatar_url) | tojson }};
 
   function updatePreview() {
-    if (avatarImageInput.files && avatarImageInput.files[0]) return; // image preview owns it
+    if (avatarImageInput.files && avatarImageInput.files[0]) return; // new upload preview owns it
+    if (hasCurrentAvatarUrl) return; // existing uploaded pfp wins over the emoji field until replaced
     const avatar = avatarInput.value.trim();
     const name = nameInput.value.trim();
     preview.textContent = avatar || (name ? name[0].toUpperCase() : "?");

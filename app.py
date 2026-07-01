@@ -41,7 +41,36 @@ SUPABASE_SERVICE_ROLE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 # trusted backend, not a browser talking straight to Supabase, so that's the right split.
 db: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
-GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+# Roleplay-model provider presets. All of these (and "custom") are assumed OpenAI-compatible chat
+# completions endpoints — same shape already used for moderation/tagging against freemodel.dev, so
+# nothing new architecturally, just a swappable base_url/key/model per account instead of one
+# hardcoded provider.
+PROVIDER_PRESETS = {
+    "groq": {
+        "label": "Groq",
+        "base_url": "https://api.groq.com/openai/v1",
+        "default_model": "llama-3.3-70b-versatile",
+        "keys_url": "https://console.groq.com/keys",
+    },
+    "openai": {
+        "label": "OpenAI",
+        "base_url": "https://api.openai.com/v1",
+        "default_model": "gpt-4o-mini",
+        "keys_url": "https://platform.openai.com/api-keys",
+    },
+    "openrouter": {
+        "label": "OpenRouter",
+        "base_url": "https://openrouter.ai/api/v1",
+        "default_model": "meta-llama/llama-3.3-70b-instruct",
+        "keys_url": "https://openrouter.ai/keys",
+    },
+    "custom": {
+        "label": "Custom (OpenAI-compatible)",
+        "base_url": None,
+        "default_model": "",
+        "keys_url": None,
+    },
+}
 DEFAULT_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
 MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "700"))
 TEMPERATURE = float(os.environ.get("TEMPERATURE", "1.0"))
@@ -507,40 +536,52 @@ def get_user_settings(user_id):
     return res.data[0] if res.data else {}
 
 
-def set_user_settings(user_id, api_key=None, model=None, terms_accepted=False):
+def set_user_settings(user_id, provider=None, base_url=None, api_key=None, model=None, terms_accepted=False):
     payload = {"user_id": user_id}
+    if provider is not None:
+        payload["provider"] = provider
+    if base_url is not None:
+        payload["base_url"] = base_url
     if api_key is not None:
-        payload["groq_api_key"] = api_key
+        payload["api_key"] = api_key
     if model is not None:
-        payload["groq_model"] = model
+        payload["model"] = model
     if terms_accepted:
         payload["terms_accepted_at"] = datetime.utcnow().isoformat()
     db.table("user_settings").upsert(payload).execute()
 
 
-def get_groq_api_key(user_id):
-    return get_user_settings(user_id).get("groq_api_key") or ""
+def get_llm_config(user_id):
+    """Resolves (provider, base_url, api_key, model) for a user's roleplay-model calls, falling
+    back to that provider's preset base_url/model when the account hasn't overridden them."""
+    settings = get_user_settings(user_id)
+    provider = settings.get("provider") or "groq"
+    preset = PROVIDER_PRESETS.get(provider, PROVIDER_PRESETS["custom"])
+    base_url = (settings.get("base_url") or preset["base_url"] or "").rstrip("/")
+    model = settings.get("model") or preset["default_model"] or DEFAULT_MODEL
+    api_key = settings.get("api_key") or ""
+    return provider, base_url, api_key, model
 
 
-def get_groq_model(user_id):
-    return get_user_settings(user_id).get("groq_model") or DEFAULT_MODEL
-
-
-def call_groq(messages, user_id):
-    api_key = get_groq_api_key(user_id)
+def call_roleplay_model(messages, user_id):
+    provider, base_url, api_key, model = get_llm_config(user_id)
     if not api_key:
         raise RuntimeError(
-            "You haven't added a Groq API key yet. Go to /settings and paste one in — it's free at "
-            "console.groq.com/keys."
+            "You haven't added an API key yet. Go to /settings and set one up — Groq's free tier "
+            "works great to start."
+        )
+    if not base_url:
+        raise RuntimeError(
+            "No base URL configured for your custom provider. Go to /settings and fill one in."
         )
     resp = requests.post(
-        GROQ_URL,
+        f"{base_url}/chat/completions",
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         },
         json={
-            "model": get_groq_model(user_id),
+            "model": model,
             "messages": messages,
             "max_tokens": MAX_TOKENS,
             "temperature": TEMPERATURE,
@@ -675,22 +716,31 @@ def terms():
 @login_required
 def settings():
     if request.method == "POST":
-        api_key = request.form.get("groq_api_key", "").strip()
-        model = request.form.get("groq_model", "").strip()
+        provider = request.form.get("provider", "groq").strip()
+        if provider not in PROVIDER_PRESETS:
+            provider = "groq"
+        base_url = request.form.get("base_url", "").strip()
+        api_key = request.form.get("api_key", "").strip()
+        model = request.form.get("model", "").strip()
         set_user_settings(
             session["user_id"],
+            provider=provider,
+            base_url=base_url if provider == "custom" else "",
             api_key=api_key if api_key else None,
             model=model if model else None,
         )
         return redirect(url_for("settings", saved=1))
 
-    current_key = get_groq_api_key(session["user_id"])
+    current_provider, current_base_url, current_key, current_model = get_llm_config(session["user_id"])
     masked_key = ("•" * 8 + current_key[-4:]) if current_key else ""
     return render_template(
         "settings.html",
         masked_key=masked_key,
         has_key=bool(current_key),
-        current_model=get_groq_model(session["user_id"]),
+        current_provider=current_provider,
+        current_base_url=get_user_settings(session["user_id"]).get("base_url") or "",
+        current_model=current_model,
+        providers=PROVIDER_PRESETS,
         saved=request.args.get("saved"),
     )
 
@@ -727,6 +777,61 @@ def upload_character_avatar(user_id, file_storage):
         path, file_bytes, file_options={"content-type": content_type, "upsert": "true"}
     )
     return db.storage.from_(AVATAR_BUCKET).get_public_url(path)
+
+
+def run_character_moderation(name, persona, scenario, first_message, rating, minor_safe_confirmed):
+    """Shared moderation pipeline for both creating and editing a character sheet. Returns a dict:
+    {ok, minor_safe_mode, rating, error, offer_minor_safe}. Editing a character re-runs this exact
+    same pipeline — skipping moderation on edits would be a wide-open bypass of the whole
+    creation-time gate (make an innocuous character, then edit it into something that never
+    actually got checked)."""
+    sheet_text = "\n".join(
+        filter(
+            None,
+            [
+                f"Name: {name}",
+                f"Persona: {persona}",
+                f"Scenario: {scenario}" if scenario else "",
+                f"Opening message: {first_message}" if first_message else "",
+                f"Rating selected: {rating}",
+            ],
+        )
+    )
+
+    has_keyword, _ = has_minor_keyword(sheet_text)
+    staff = is_staff(session.get("user_email"))
+
+    if has_keyword or not staff:
+        flagged, category, reasoning = check_moderation(sheet_text)
+        if flagged and category == "minors_nonsexual":
+            if not minor_safe_confirmed:
+                log_moderation_flag(
+                    session["user_id"], None, "character_sheet", sheet_text, category, reasoning
+                )
+                return {
+                    "ok": False,
+                    "minor_safe_mode": False,
+                    "rating": rating,
+                    "offer_minor_safe": True,
+                    "error": "this character reads as a minor. if that's intentional for a "
+                    "non-sexual story, you can save it in minor-safe mode below — the roleplay "
+                    "model will be permanently locked out of sexual content for this character "
+                    "no matter what, regardless of the rating dial.",
+                }
+            return {"ok": True, "minor_safe_mode": True, "rating": "soft", "offer_minor_safe": False, "error": None}
+        elif flagged:
+            log_moderation_flag(
+                session["user_id"], None, "character_sheet", sheet_text, category, reasoning
+            )
+            return {
+                "ok": False,
+                "minor_safe_mode": False,
+                "rating": rating,
+                "offer_minor_safe": False,
+                "error": "this character sheet was blocked by the moderation filter and wasn't saved.",
+            }
+
+    return {"ok": True, "minor_safe_mode": False, "rating": rating, "offer_minor_safe": False, "error": None}
 
 
 def create_chat_for_character(character, user_id, title="Chat", rating=None):
@@ -830,6 +935,7 @@ def new_character():
         avatar = request.form.get("avatar", "").strip()
         first_message = request.form.get("first_message", "").strip()
         visibility = "public" if request.form.get("visibility") == "public" else "private"
+        minor_safe_confirmed = request.form.get("minor_safe_confirmed") == "1"
 
         form_state = dict(
             rating_levels=RATING_LEVELS,
@@ -848,72 +954,12 @@ def new_character():
         except ValueError as e:
             return render_template("create_character.html", error=str(e), **form_state), 400
 
-        minor_safe_confirmed = request.form.get("minor_safe_confirmed") == "1"
-
-        # The character sheet (name/persona/scenario/opening line) gets baked into the system
-        # prompt for every single message in this chat, so it has to clear moderation up front —
-        # checking only the live chat messages would leave this as an unscanned backdoor. Rating
-        # is included here because it's part of what tells the classifier whether a detected minor
-        # comes with sexual/adult-oriented intent or not.
-        sheet_text = "\n".join(
-            filter(
-                None,
-                [
-                    f"Name: {name}",
-                    f"Persona: {persona}",
-                    f"Scenario: {scenario}" if scenario else "",
-                    f"Opening message: {first_message}" if first_message else "",
-                    f"Rating selected: {rating}",
-                ],
-            )
-        )
-
-        # Minor-detection is entirely on the LLM classifier now (see MODERATION_SYSTEM_PROMPT's
-        # mandatory age-scan rule + worked examples) rather than a regex hard block — the regex
-        # was too easy to dodge with a slightly different phrasing of the same age. A minor-coded
-        # keyword ("kid", "child", "minor"...) still forces the check to run even for staff, since
-        # those words are common enough in normal writing that skipping the check entirely on a
-        # staff account would leave a real gap.
-        has_keyword, keyword_hit = has_minor_keyword(sheet_text)
-        staff = is_staff(session.get("user_email"))
-        minor_safe_mode = False
-
-        if has_keyword or not staff:
-            flagged, category, reasoning = check_moderation(sheet_text)
-            if flagged and category == "minors_nonsexual":
-                if not minor_safe_confirmed:
-                    # First pass: don't create yet, offer the locked-down path instead of a flat
-                    # rejection — this specific category means a minor was detected with nothing
-                    # sexual about it, so there's a legitimate non-sexual use case here.
-                    log_moderation_flag(
-                        session["user_id"], None, "character_sheet", sheet_text, category, reasoning
-                    )
-                    return render_template(
-                        "create_character.html",
-                        offer_minor_safe=True,
-                        error="this character reads as a minor. if that's intentional for a "
-                        "non-sexual story, you can create it in minor-safe mode below — the "
-                        "roleplay model will be permanently locked out of sexual content for "
-                        "this character no matter what, regardless of the rating dial.",
-                        **form_state,
-                    ), 400
-                # Confirmed: create it, but the safety lock is non-negotiable and overrides
-                # whatever rating was selected — force the visible rating to the safest tone too
-                # so the UI doesn't show something contradictory later.
-                minor_safe_mode = True
-                rating = "soft"
-                form_state["selected_rating"] = "soft"
-            elif flagged:
-                # minors_sexual, real_person_nonconsensual, illegal_real_world_content — no path
-                # around any of these, ever.
-                log_moderation_flag(
-                    session["user_id"], None, "character_sheet", sheet_text, category, reasoning
-                )
-                return render_template(
-                    "create_character.html",
-                    error="this character sheet was blocked by the moderation filter and wasn't created.",
-                    **form_state,
-                ), 400
+        mod = run_character_moderation(name, persona, scenario, first_message, rating, minor_safe_confirmed)
+        form_state["selected_rating"] = mod["rating"]
+        if not mod["ok"]:
+            return render_template(
+                "create_character.html", error=mod["error"], offer_minor_safe=mod["offer_minor_safe"], **form_state
+            ), 400
 
         # Best-effort auto-tagging for the community similarity signal — never blocks creation.
         tags = generate_character_tags(name, persona, scenario)
@@ -929,8 +975,8 @@ def new_character():
                     "first_message": first_message,
                     "avatar": avatar,
                     "avatar_url": avatar_url,
-                    "rating": rating,
-                    "minor_safe_mode": minor_safe_mode,
+                    "rating": mod["rating"],
+                    "minor_safe_mode": mod["minor_safe_mode"],
                     "visibility": visibility,
                     "tags": tags,
                 }
@@ -944,6 +990,91 @@ def new_character():
 
     return render_template(
         "create_character.html", rating_levels=RATING_LEVELS, rating_labels=RATING_LABELS
+    )
+
+
+@app.route("/character/<int:character_id>/edit", methods=["GET", "POST"])
+@login_required
+def edit_character(character_id):
+    character = get_owned_character(character_id)
+
+    if request.method == "POST":
+        rating = request.form.get("rating", "explicit").strip()
+        if rating not in RATING_LEVELS:
+            rating = "explicit"
+
+        name = request.form["name"].strip()
+        persona = request.form["persona"].strip()
+        scenario = request.form.get("scenario", "").strip()
+        avatar = request.form.get("avatar", "").strip()
+        first_message = request.form.get("first_message", "").strip()
+        visibility = "public" if request.form.get("visibility") == "public" else "private"
+        # Already-locked characters don't need to re-confirm every edit — only a fresh minors_nonsexual
+        # detection on a not-yet-locked character needs the checkbox.
+        minor_safe_confirmed = (
+            request.form.get("minor_safe_confirmed") == "1" or character.get("minor_safe_mode", False)
+        )
+
+        form_state = dict(
+            rating_levels=RATING_LEVELS,
+            rating_labels=RATING_LABELS,
+            name=name,
+            persona=persona,
+            scenario=scenario,
+            avatar=avatar,
+            first_message=first_message,
+            selected_rating=rating,
+            selected_visibility=visibility,
+            editing_character_id=character_id,
+            current_avatar_url=character.get("avatar_url"),
+        )
+
+        try:
+            new_avatar_url = upload_character_avatar(session["user_id"], request.files.get("avatar_image"))
+        except ValueError as e:
+            return render_template("create_character.html", error=str(e), **form_state), 400
+        avatar_url = new_avatar_url if new_avatar_url else character.get("avatar_url")
+
+        mod = run_character_moderation(name, persona, scenario, first_message, rating, minor_safe_confirmed)
+        form_state["selected_rating"] = mod["rating"]
+        if not mod["ok"]:
+            return render_template(
+                "create_character.html", error=mod["error"], offer_minor_safe=mod["offer_minor_safe"], **form_state
+            ), 400
+
+        # Re-tag since the persona/scenario may have changed meaningfully.
+        tags = generate_character_tags(name, persona, scenario)
+
+        db.table("characters").update(
+            {
+                "name": name,
+                "persona": persona,
+                "scenario": scenario,
+                "first_message": first_message,
+                "avatar": avatar,
+                "avatar_url": avatar_url,
+                "rating": mod["rating"],
+                "minor_safe_mode": mod["minor_safe_mode"],
+                "visibility": visibility,
+                "tags": tags,
+            }
+        ).eq("id", character_id).execute()
+
+        return redirect(url_for("character_detail", character_id=character_id))
+
+    return render_template(
+        "create_character.html",
+        rating_levels=RATING_LEVELS,
+        rating_labels=RATING_LABELS,
+        name=character["name"],
+        persona=character["persona"],
+        scenario=character["scenario"],
+        avatar=character["avatar"],
+        first_message=character["first_message"],
+        selected_rating=character["rating"],
+        selected_visibility=character["visibility"],
+        editing_character_id=character_id,
+        current_avatar_url=character.get("avatar_url"),
     )
 
 
@@ -1085,7 +1216,7 @@ def send_message(chat_id):
     api_messages += [{"role": row["role"], "content": row["content"]} for row in history_res.data]
 
     try:
-        reply = call_groq(api_messages, session["user_id"])
+        reply = call_roleplay_model(api_messages, session["user_id"])
     except requests.HTTPError as e:
         return jsonify({"error": f"groq api error: {e.response.text}"}), 502
     except Exception as e:
