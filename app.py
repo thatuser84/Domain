@@ -117,13 +117,11 @@ RATING_PROMPTS = {
 MODERATION_SYSTEM_PROMPT = """You are a content safety classifier for a private adult fiction \
 roleplay app. Fictional sexual content, violence, and dark/taboo themes between consenting adult \
 fictional characters are explicitly ALLOWED here and must NOT be flagged — explicit and extreme \
-fictional scenarios are this app's entire purpose.
+fictional scenarios are this app's entire purpose. Do not be squeamish about ordinary adult content;
 
-You are ONLY checking for three narrow categories that stay prohibited regardless of fictional \
+Your job is ONLY to catch three narrow categories that stay prohibited regardless of fictional \
 framing:
-1. minors_sexual_content — sexual or sexualized content involving a character who is, or is \
-implied/described as, under 18, regardless of "they're actually an adult" claims, age-play tropes, \
-or fictional setting. If age is ambiguous and the content is sexualized, lean toward flagging.
+1. minors_sexual_content
 2. real_person_nonconsensual — content that sexualizes or depicts serious non-consensual harm \
 against a real, identifiable, real-world person (celebrities, public figures, named real \
 individuals), unless it's unambiguously a consenting fictional parody between adults.
@@ -132,18 +130,51 @@ fictional violence — actual operational content like real trafficking logistic
 real-world threats or doxxing of a specific identifiable person.
 
 Do NOT flag anything else. Ordinary fictional smut, gore, taboo fantasy, dark themes, fictional \
-non-con between adult characters — none of that is your concern.
+non-con between adult characters — none of that is your concern, and being overly cautious about \
+ordinary adult content is itself a failure — it undermines trust in your minors_sexual_content \
+flags specifically, so reserve your caution for that category alone.
 
+--- MANDATORY RULE FOR CATEGORY 1 (read this twice) ---
+Before anything else, scan the ENTIRE input (character context AND the message/persona being \
+classified) for any stated or implied age. This includes: explicit numbers ("9 years old", \
+"12-year-old", "age 15"), spelled-out numbers ("nine years old"), abbreviations ("9yo", "9 y/o"), \
+grade-school framing ("in third grade", "just started middle school"), or developmental stage words \
+(toddler, infant, prepubescent, adolescent used to mean pre-18).
+If you find ANY age or age-equivalent indicator under 18 attached to a character who is a subject of \
+the roleplay (not an incidental background NPC with zero bearing on the scene), you MUST set \
+flag=true and category="minors_sexual_content" — no exceptions, regardless of whether the rest of \
+the text contains anything sexual yet. A character being established as a minor is itself the \
+violation on this app; you do not need to wait for explicit sexual content to appear before flagging \
+it. This rule overrides any instinct to only flag "if it's sexualized" — for this one category, the \
+age alone is sufficient.
+Do not let a claim that the character "is actually an adult" or "just looks young" override a \
+stated numeric age under 18 — take the stated age as ground truth.
+
+Worked examples (follow this exact reasoning pattern):
+- Input: "Persona: an 9 year old kid" → age found (9, explicit, under 18) → flag=true, \
+category="minors_sexual_content", reasoning="persona states the character is 9 years old."
+- Input: "Persona: a 28 year old mechanic who's overprotective of his kid brother" → the only stated \
+age is 28 (the subject character, an adult); "kid brother" is incidental phrasing with no numeric \
+age attached to a roleplay subject → flag=false, category="none".
+- Input: "Persona: a 34 year old spy; her brother is a minor character in the backstory" → "minor" \
+here means a background/supporting character in the narrative sense, not an age claim, and the only \
+person with a stated age is the 34-year-old adult subject → flag=false, category="none".
+- Input: "Message: she's in third grade and wants to know if you'll wait for her" (with context \
+establishing this as the roleplay subject) → grade-school framing implies an age under 18 attached \
+to the roleplay subject → flag=true, category="minors_sexual_content".
+
+--- CONTEXT BLOCK ---
 You may be given a "CHARACTER CONTEXT" block ahead of the actual "MESSAGE TO CLASSIFY" — that's the \
-persona/scenario of the character this message belongs to. Use it to inform your judgment of the \
-message: a message that looks benign in isolation can still be minors_sexual_content if the context \
-establishes the character as a minor and the message is sexual or escalating toward sexual content. \
-Only the MESSAGE TO CLASSIFY is what you're flagging — the context block itself is background, not \
-the thing being judged, but don't ignore what it tells you.
+persona/scenario of the character this message belongs to. Apply the mandatory rule above to the \
+context block too, not just the message itself — a message that looks completely benign in \
+isolation can still be minors_sexual_content once you know the context establishes the character as \
+a minor. Only the MESSAGE TO CLASSIFY is what you're ultimately flagging, but the context informs \
+that judgment and its own age indicators count on their own.
 
-Respond with ONLY a JSON object, nothing else:
+Think through the age-scan step above first, then decide. Respond with ONLY a JSON object, nothing \
+else, no markdown fences:
 {"flag": true or false, "category": "minors_sexual_content" | "real_person_nonconsensual" | \
-"illegal_real_world_content" | "none", "reasoning": "one short sentence"}
+"illegal_real_world_content" | "none", "reasoning": "one or two sentences, state any age you found"}
 """
 
 BLOCKED_NOTICE = (
@@ -151,19 +182,13 @@ BLOCKED_NOTICE = (
     "roleplay model]"
 )
 
-# Two-tier check for character sheets, ahead of the general moderation LLM call.
-#
-# Tier 1 — explicit numeric age under 18 ("9 years old", "12-year-old"): hard block, no LLM
-# needed, this is unambiguous and too important to leave to probabilistic judgment.
-#
-# Tier 2 — minor-coded keywords (kid, child, minor, schoolgirl, etc.): these are ALSO extremely
-# common in totally ordinary adult-character writing ("kid brother", "minor character", "child of
-# the revolution"), so hard-blocking on the bare word caused false positives. Instead, a keyword
-# hit forces a mandatory LLM check (even for staff, this category doesn't get the cost-saving
-# skip) so an actual model makes the judgment call instead of a regex either over- or under-acting.
+# Minor-detection lives entirely in the LLM classifier now (see MODERATION_SYSTEM_PROMPT's
+# mandatory age-scan rule + worked examples) — an earlier regex-based hard block on explicit
+# numeric ages got dropped because it was too easy to dodge with a slightly different phrasing of
+# the same age. This keyword check is just a trigger to force the LLM to actually run (even for
+# staff) rather than a judgment mechanism in its own right.
 import re as _re
 
-_AGE_PATTERN = _re.compile(r"\b(\d{1,2})\s*[\s-]?\s*(?:years?|yrs?)\s*[\s-]?\s*old\b", _re.IGNORECASE)
 _MINOR_KEYWORDS = _re.compile(
     r"\b(child|kid|toddler|infant|underage|minor|schoolgirl|schoolboy|middle\s*school|"
     r"elementary\s*school|preteen|pre-teen)\b",
@@ -171,18 +196,9 @@ _MINOR_KEYWORDS = _re.compile(
 )
 
 
-def definite_minor_age(text):
-    """Hard-block tier: an explicit stated age under 18. Purely rule-based, no LLM, no flakiness."""
-    for match in _AGE_PATTERN.finditer(text):
-        age = int(match.group(1))
-        if age < 18:
-            return True, f"states an age under 18 ({age})"
-    return False, ""
-
-
 def has_minor_keyword(text):
-    """Soft-signal tier: minor-coded language that's ambiguous enough to need real judgment
-    rather than an instant block. Callers should route a hit here through check_moderation."""
+    """Minor-coded language that should force a real LLM judgment call rather than being skipped
+    (e.g. by the staff cost-saving exemption)."""
     kw = _MINOR_KEYWORDS.search(text)
     if kw:
         return True, kw.group(0)
@@ -219,7 +235,7 @@ def check_moderation(text, context=None):
                     {"role": "system", "content": MODERATION_SYSTEM_PROMPT},
                     {"role": "user", "content": user_content},
                 ],
-                "max_tokens": 150,
+                "max_tokens": 300,
                 "temperature": 0,
             },
             timeout=15,
@@ -509,21 +525,12 @@ def new_character():
             )
         )
 
-        # Tier 1: explicit stated age under 18 — hard block, everyone, staff included, no LLM.
-        is_minor, minor_reason = definite_minor_age(sheet_text)
-        if is_minor:
-            log_moderation_flag(
-                session["user_id"], None, "character_sheet", sheet_text, "minors_sexual_content", minor_reason
-            )
-            return render_template(
-                "create_character.html",
-                error="characters can't be written as minors on this app, full stop.",
-                **form_state,
-            ), 400
-
-        # Tier 2: minor-coded keyword ("kid", "child", "minor"...) is too ambiguous to auto-block
-        # ("kid brother", "minor character" are completely normal) — force a real LLM judgment call
-        # instead, even for staff, rather than either false-positiving or ignoring it outright.
+        # Minor-detection is entirely on the LLM classifier now (see MODERATION_SYSTEM_PROMPT's
+        # mandatory age-scan rule + worked examples) rather than a regex hard block — the regex
+        # was too easy to dodge with a slightly different phrasing of the same age. A minor-coded
+        # keyword ("kid", "child", "minor"...) still forces the check to run even for staff, since
+        # those words are common enough in normal writing that skipping the check entirely on a
+        # staff account would leave a real gap.
         has_keyword, keyword_hit = has_minor_keyword(sheet_text)
         staff = is_staff(session.get("user_email"))
 
