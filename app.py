@@ -151,6 +151,33 @@ BLOCKED_NOTICE = (
     "roleplay model]"
 )
 
+# Deterministic backstop for character sheets, checked before the LLM classifier ever runs. This
+# app is explicit adult-content roleplay — there is no legitimate case for a character being a
+# stated minor, ambiguous or not, so this doesn't rely on probabilistic judgment for that specific
+# question the way the LLM classifier does for everything else.
+import re as _re
+
+_AGE_PATTERN = _re.compile(r"\b(\d{1,2})\s*[\s-]?\s*(?:years?|yrs?)\s*[\s-]?\s*old\b", _re.IGNORECASE)
+_MINOR_KEYWORDS = _re.compile(
+    r"\b(child|kid|toddler|infant|underage|minor|schoolgirl|schoolboy|middle\s*school|"
+    r"elementary\s*school|preteen|pre-teen)\b",
+    _re.IGNORECASE,
+)
+
+
+def contains_minor_indicators(text):
+    """Returns (True, reason) if text states an age under 18 or uses obvious minor-coded language.
+    Purely rule-based — no LLM call, no flakiness, this specific check is too important to leave
+    to a probabilistic classifier that's inconsistent on bare age statements."""
+    for match in _AGE_PATTERN.finditer(text):
+        age = int(match.group(1))
+        if age < 18:
+            return True, f"states an age under 18 ({age})"
+    kw = _MINOR_KEYWORDS.search(text)
+    if kw:
+        return True, f"uses minor-coded language ({kw.group(0)!r})"
+    return False, ""
+
 
 def check_moderation(text, context=None):
     """Classify text against the narrow prohibited-content categories above.
@@ -460,18 +487,32 @@ def new_character():
         # The character sheet (name/persona/scenario/opening line) gets baked into the system
         # prompt for every single message in this chat, so it has to clear moderation up front —
         # checking only the live chat messages would leave this as an unscanned backdoor.
-        if not is_staff(session.get("user_email")):
-            sheet_text = "\n".join(
-                filter(
-                    None,
-                    [
-                        f"Name: {name}",
-                        f"Persona: {persona}",
-                        f"Scenario: {scenario}" if scenario else "",
-                        f"Opening message: {first_message}" if first_message else "",
-                    ],
-                )
+        sheet_text = "\n".join(
+            filter(
+                None,
+                [
+                    f"Name: {name}",
+                    f"Persona: {persona}",
+                    f"Scenario: {scenario}" if scenario else "",
+                    f"Opening message: {first_message}" if first_message else "",
+                ],
             )
+        )
+
+        # Deterministic minor check runs for EVERYONE, staff included — no LLM call, no cost, and
+        # this specific rule is too important to ever skip regardless of who's testing.
+        is_minor, minor_reason = contains_minor_indicators(sheet_text)
+        if is_minor:
+            log_moderation_flag(
+                session["user_id"], None, "character_sheet", sheet_text, "minors_sexual_content", minor_reason
+            )
+            return render_template(
+                "create_character.html",
+                error="characters can't be written as minors on this app, full stop.",
+                **form_state,
+            ), 400
+
+        if not is_staff(session.get("user_email")):
             flagged, category, reasoning = check_moderation(sheet_text)
             if flagged:
                 log_moderation_flag(
