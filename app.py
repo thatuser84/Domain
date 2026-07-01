@@ -151,10 +151,16 @@ BLOCKED_NOTICE = (
     "roleplay model]"
 )
 
-# Deterministic backstop for character sheets, checked before the LLM classifier ever runs. This
-# app is explicit adult-content roleplay — there is no legitimate case for a character being a
-# stated minor, ambiguous or not, so this doesn't rely on probabilistic judgment for that specific
-# question the way the LLM classifier does for everything else.
+# Two-tier check for character sheets, ahead of the general moderation LLM call.
+#
+# Tier 1 — explicit numeric age under 18 ("9 years old", "12-year-old"): hard block, no LLM
+# needed, this is unambiguous and too important to leave to probabilistic judgment.
+#
+# Tier 2 — minor-coded keywords (kid, child, minor, schoolgirl, etc.): these are ALSO extremely
+# common in totally ordinary adult-character writing ("kid brother", "minor character", "child of
+# the revolution"), so hard-blocking on the bare word caused false positives. Instead, a keyword
+# hit forces a mandatory LLM check (even for staff, this category doesn't get the cost-saving
+# skip) so an actual model makes the judgment call instead of a regex either over- or under-acting.
 import re as _re
 
 _AGE_PATTERN = _re.compile(r"\b(\d{1,2})\s*[\s-]?\s*(?:years?|yrs?)\s*[\s-]?\s*old\b", _re.IGNORECASE)
@@ -165,17 +171,21 @@ _MINOR_KEYWORDS = _re.compile(
 )
 
 
-def contains_minor_indicators(text):
-    """Returns (True, reason) if text states an age under 18 or uses obvious minor-coded language.
-    Purely rule-based — no LLM call, no flakiness, this specific check is too important to leave
-    to a probabilistic classifier that's inconsistent on bare age statements."""
+def definite_minor_age(text):
+    """Hard-block tier: an explicit stated age under 18. Purely rule-based, no LLM, no flakiness."""
     for match in _AGE_PATTERN.finditer(text):
         age = int(match.group(1))
         if age < 18:
             return True, f"states an age under 18 ({age})"
+    return False, ""
+
+
+def has_minor_keyword(text):
+    """Soft-signal tier: minor-coded language that's ambiguous enough to need real judgment
+    rather than an instant block. Callers should route a hit here through check_moderation."""
     kw = _MINOR_KEYWORDS.search(text)
     if kw:
-        return True, f"uses minor-coded language ({kw.group(0)!r})"
+        return True, kw.group(0)
     return False, ""
 
 
@@ -499,9 +509,8 @@ def new_character():
             )
         )
 
-        # Deterministic minor check runs for EVERYONE, staff included — no LLM call, no cost, and
-        # this specific rule is too important to ever skip regardless of who's testing.
-        is_minor, minor_reason = contains_minor_indicators(sheet_text)
+        # Tier 1: explicit stated age under 18 — hard block, everyone, staff included, no LLM.
+        is_minor, minor_reason = definite_minor_age(sheet_text)
         if is_minor:
             log_moderation_flag(
                 session["user_id"], None, "character_sheet", sheet_text, "minors_sexual_content", minor_reason
@@ -512,7 +521,13 @@ def new_character():
                 **form_state,
             ), 400
 
-        if not is_staff(session.get("user_email")):
+        # Tier 2: minor-coded keyword ("kid", "child", "minor"...) is too ambiguous to auto-block
+        # ("kid brother", "minor character" are completely normal) — force a real LLM judgment call
+        # instead, even for staff, rather than either false-positiving or ignoring it outright.
+        has_keyword, keyword_hit = has_minor_keyword(sheet_text)
+        staff = is_staff(session.get("user_email"))
+
+        if has_keyword or not staff:
             flagged, category, reasoning = check_moderation(sheet_text)
             if flagged:
                 log_moderation_flag(
