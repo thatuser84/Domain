@@ -152,36 +152,66 @@ specifically, so reserve your caution for those categories alone.
 
 --- MANDATORY RULE FOR AGE DETECTION (read this twice) ---
 Before anything else, scan the ENTIRE input (character context AND the message/persona being \
-classified) for any stated or implied age. This includes: explicit numbers ("9 years old", \
-"12-year-old", "age 15"), spelled-out numbers ("nine years old"), abbreviations ("9yo", "9 y/o"), \
-grade-school framing ("in third grade", "just started middle school"), or developmental stage words \
-(toddler, infant, prepubescent, adolescent used to mean pre-18).
-If you find ANY age or age-equivalent indicator under 18 attached to a character who is a subject of \
-the roleplay (not an incidental background NPC with zero bearing on the scene), flag=true and you \
-MUST pick one of the two minor categories — never "none" for a detected minor. Then decide which:
+classified) for any of THREE kinds of minor signal — an explicit statement is not required for any \
+of these:
+
+(a) Stated or spelled-out age/grade indicators: explicit numbers ("9 years old", "12-year-old", "age \
+15"), spelled-out numbers ("nine years old"), abbreviations ("9yo", "9 y/o"), grade-school framing \
+("in third grade", "just started middle school", "freshman in high school"), or developmental stage \
+words (toddler, infant, prepubescent, adolescent used to mean pre-18).
+
+(b) Canonical/real-world knowledge: if the persona is a known real character (from a show, game, \
+book, franchise, or similar) who is canonically established as under 18, treat that as an age \
+indicator even if no number appears in the text at all — use what you actually know about that \
+character. A name and a physical/behavioral description matching a real underage character counts.
+
+(c) Designed-to-read-as-a-minor without a stated number: physical descriptions coded as childlike \
+(flat/prepubescent body descriptions, "small frame," "training bra," notably short/petite paired \
+with youthful framing), school-uniform or K-12 schooling context without a specified adult age, \
+"innocent/naive/first-time" framing stacked with childlike physical cues, dependency framing \
+("needs a parent's permission," "curfew set by mom/dad" as a live plot point), or any combination of \
+cues that would make a reasonable adult reader conclude this character is written to be a minor even \
+though no age number is ever stated. Judge the overall design intent, not just individual words in \
+isolation — a single ambiguous cue isn't enough, but several stacking together is.
+
+If you find ANY signal from (a), (b), or (c) attached to a character who is a subject of the \
+roleplay (not an incidental background NPC with zero bearing on the scene), flag=true and you MUST \
+pick one of the two minor categories — never "none" for a detected minor. Then decide which:
 - If there's ALSO sexual content, sexual intent, romantic/dating framing directed at that character, \
 or the content rating selected for the character is explicit/adult-oriented → category="minors_sexual".
 - If there is clearly nothing sexual anywhere in the input and the rating (if given) is a mild/soft \
 setting → category="minors_nonsexual".
 - If unsure which bucket, default to "minors_sexual" — false positives on the safe-mode offer cost \
 nothing, false negatives into an unrestricted minor character cost everything.
-Do not let a claim that the character "is actually an adult" or "just looks young" override a \
-stated numeric age under 18 — take the stated age as ground truth.
+Do not let a claim that the character "is actually an adult" or "just looks young" override any of \
+(a), (b), or (c) — take the strongest signal as ground truth, not a disclaimer trying to wave it away.
 
 Worked examples (follow this exact reasoning pattern):
 - Input: "Persona: an 9 year old kid" (no other content, no rating given, or rating is soft/mild) → \
-age found (9, under 18), nothing sexual present → flag=true, category="minors_nonsexual".
-- Input: "Persona: an 9 year old kid" + rating: explicit or depraved → age found AND an adult-\
+signal (a), age 9, under 18, nothing sexual present → flag=true, category="minors_nonsexual".
+- Input: "Persona: an 9 year old kid" + rating: explicit or depraved → signal (a) AND an adult-\
 oriented rating is attached to that character → flag=true, category="minors_sexual".
 - Input: "Persona: a 28 year old mechanic who's overprotective of his kid brother" → the only stated \
-age is 28 (the subject character, an adult); "kid brother" is incidental phrasing with no numeric \
-age attached to a roleplay subject → flag=false, category="none".
+age is 28 (the subject character, an adult); "kid brother" is incidental phrasing with no age signal \
+attached to a roleplay subject → flag=false, category="none".
 - Input: "Persona: a 34 year old spy; her brother is a minor character in the backstory" → "minor" \
 here means a background/supporting character in the narrative sense, not an age claim → flag=false, \
 category="none".
 - Input: "Message: she's in third grade and wants to know if you'll wait for her" (with context \
-establishing this as the roleplay subject, romantic framing present) → grade-school age indicator \
-plus romantic/sexual framing → flag=true, category="minors_sexual".
+establishing this as the roleplay subject, romantic framing present) → signal (a), grade-school age \
+indicator plus romantic/sexual framing → flag=true, category="minors_sexual".
+- Input: "Persona: [a named character you recognize as a canonically underage character from an \
+existing franchise], written faithfully to the source" + explicit rating → signal (b), a real \
+underage character, adult-oriented rating attached → flag=true, category="minors_sexual". This \
+applies whether or not the persona text itself ever states a number.
+- Input: "Persona: petite, flat-chested, wears her old school uniform, painfully shy and has never \
+been kissed, still needs her dad to sign permission slips" (no number stated, rating explicit) → \
+signal (c), several childlike/dependency cues stacking together, adult-oriented rating attached → \
+flag=true, category="minors_sexual".
+- Input: "Persona: petite 24-year-old grad student, still gets called 'kid' by her professor, dresses \
+casually" → only one weak, explicitly-adult-contradicted cue ("kid" as a nickname) against a stated \
+adult age of 24 → flag=false, category="none". A stated adult age beats a single weak vibe cue; it \
+takes real stacking of signals under (c), or a signal from (a)/(b), to flag.
 
 --- CONTEXT BLOCK ---
 You may be given a "CHARACTER CONTEXT" block ahead of the actual "MESSAGE TO CLASSIFY" — that's the \
