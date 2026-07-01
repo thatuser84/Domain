@@ -238,6 +238,36 @@ button { font-family: inherit; }
 
 .hint { font-size: 12px; color: var(--text-faint); font-weight: 400; margin: 4px 0 0; }
 
+.minor-safe-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  cursor: pointer;
+}
+
+.minor-safe-check input { margin-top: 3px; flex-shrink: 0; }
+
+.minor-safe-tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--ok);
+  background: rgba(95, 217, 154, 0.1);
+  border: 1px solid rgba(95, 217, 154, 0.3);
+  border-radius: var(--radius-full);
+  padding: 2px 9px;
+}
+
 .hint code {
   background: var(--bg-elev-2);
   padding: 1px 5px;

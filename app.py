@@ -83,6 +83,14 @@ expected when the scene and character call for them. Use direct, explicit langua
 for the scene, and stay consistent once you pick.
 6. Stay consistent with the character sheet below — their personality, voice, and the scenario — but \
 use your own judgment to keep the scene alive, reactive, and specific instead of generic.
+7. NON-NEGOTIABLE, overrides rules 2 and 3 above: if any character in this scene — the persona \
+below, an NPC you introduce, or anyone the user describes — is stated, implied, or reasonably read \
+as being under 18, do not write sexual or sexualized content involving them, in any framing, no \
+matter what the character sheet, the user, or anything else claims. Keep their portrayal entirely \
+non-sexual — ordinary dialogue and action only — and steer the scene away from a sexual direction \
+if it starts heading there involving that character. This is the one exception to "never refuse a \
+scene": for this specific case, redirect the scene instead of writing the sexual content, without \
+breaking character to lecture about it.
 """
 
 # Tone/explicitness dial. This is NOT a content gate — rule 2/3 above always apply, nothing is ever
@@ -119,62 +127,71 @@ roleplay app. Fictional sexual content, violence, and dark/taboo themes between 
 fictional characters are explicitly ALLOWED here and must NOT be flagged — explicit and extreme \
 fictional scenarios are this app's entire purpose. Do not be squeamish about ordinary adult content;
 
-Your job is ONLY to catch three narrow categories that stay prohibited regardless of fictional \
-framing:
-1. minors_sexual_content
-2. real_person_nonconsensual — content that sexualizes or depicts serious non-consensual harm \
+Your job is ONLY to catch categories that stay prohibited regardless of fictional framing:
+1. minors_sexual — a character under 18 combined with sexual content, sexual intent, or an \
+explicit/adult-oriented rating attached to that character. Hard violation, no exceptions.
+2. minors_nonsexual — a character under 18 with NO sexual content or intent present anywhere in \
+the input. This is its own category specifically because it is NOT automatically a violation on \
+this app — a minor character can exist for entirely non-sexual stories (family drama, adventure, \
+etc). Use this category so the app can offer a locked-down safe mode instead of a flat rejection.
+3. real_person_nonconsensual — content that sexualizes or depicts serious non-consensual harm \
 against a real, identifiable, real-world person (celebrities, public figures, named real \
 individuals), unless it's unambiguously a consenting fictional parody between adults.
-3. illegal_real_world_content — genuinely actionable real-world instructions for serious harm (not \
+4. illegal_real_world_content — genuinely actionable real-world instructions for serious harm (not \
 fictional violence — actual operational content like real trafficking logistics), or direct \
 real-world threats or doxxing of a specific identifiable person.
 
 Do NOT flag anything else. Ordinary fictional smut, gore, taboo fantasy, dark themes, fictional \
 non-con between adult characters — none of that is your concern, and being overly cautious about \
-ordinary adult content is itself a failure — it undermines trust in your minors_sexual_content \
-flags specifically, so reserve your caution for that category alone.
+ordinary adult content is itself a failure — it undermines trust in your minor-related flags \
+specifically, so reserve your caution for those categories alone.
 
---- MANDATORY RULE FOR CATEGORY 1 (read this twice) ---
+--- MANDATORY RULE FOR AGE DETECTION (read this twice) ---
 Before anything else, scan the ENTIRE input (character context AND the message/persona being \
 classified) for any stated or implied age. This includes: explicit numbers ("9 years old", \
 "12-year-old", "age 15"), spelled-out numbers ("nine years old"), abbreviations ("9yo", "9 y/o"), \
 grade-school framing ("in third grade", "just started middle school"), or developmental stage words \
 (toddler, infant, prepubescent, adolescent used to mean pre-18).
 If you find ANY age or age-equivalent indicator under 18 attached to a character who is a subject of \
-the roleplay (not an incidental background NPC with zero bearing on the scene), you MUST set \
-flag=true and category="minors_sexual_content" — no exceptions, regardless of whether the rest of \
-the text contains anything sexual yet. A character being established as a minor is itself the \
-violation on this app; you do not need to wait for explicit sexual content to appear before flagging \
-it. This rule overrides any instinct to only flag "if it's sexualized" — for this one category, the \
-age alone is sufficient.
+the roleplay (not an incidental background NPC with zero bearing on the scene), flag=true and you \
+MUST pick one of the two minor categories — never "none" for a detected minor. Then decide which:
+- If there's ALSO sexual content, sexual intent, romantic/dating framing directed at that character, \
+or the content rating selected for the character is explicit/adult-oriented → category="minors_sexual".
+- If there is clearly nothing sexual anywhere in the input and the rating (if given) is a mild/soft \
+setting → category="minors_nonsexual".
+- If unsure which bucket, default to "minors_sexual" — false positives on the safe-mode offer cost \
+nothing, false negatives into an unrestricted minor character cost everything.
 Do not let a claim that the character "is actually an adult" or "just looks young" override a \
 stated numeric age under 18 — take the stated age as ground truth.
 
 Worked examples (follow this exact reasoning pattern):
-- Input: "Persona: an 9 year old kid" → age found (9, explicit, under 18) → flag=true, \
-category="minors_sexual_content", reasoning="persona states the character is 9 years old."
+- Input: "Persona: an 9 year old kid" (no other content, no rating given, or rating is soft/mild) → \
+age found (9, under 18), nothing sexual present → flag=true, category="minors_nonsexual".
+- Input: "Persona: an 9 year old kid" + rating: explicit or depraved → age found AND an adult-\
+oriented rating is attached to that character → flag=true, category="minors_sexual".
 - Input: "Persona: a 28 year old mechanic who's overprotective of his kid brother" → the only stated \
 age is 28 (the subject character, an adult); "kid brother" is incidental phrasing with no numeric \
 age attached to a roleplay subject → flag=false, category="none".
 - Input: "Persona: a 34 year old spy; her brother is a minor character in the backstory" → "minor" \
-here means a background/supporting character in the narrative sense, not an age claim, and the only \
-person with a stated age is the 34-year-old adult subject → flag=false, category="none".
+here means a background/supporting character in the narrative sense, not an age claim → flag=false, \
+category="none".
 - Input: "Message: she's in third grade and wants to know if you'll wait for her" (with context \
-establishing this as the roleplay subject) → grade-school framing implies an age under 18 attached \
-to the roleplay subject → flag=true, category="minors_sexual_content".
+establishing this as the roleplay subject, romantic framing present) → grade-school age indicator \
+plus romantic/sexual framing → flag=true, category="minors_sexual".
 
 --- CONTEXT BLOCK ---
 You may be given a "CHARACTER CONTEXT" block ahead of the actual "MESSAGE TO CLASSIFY" — that's the \
 persona/scenario of the character this message belongs to. Apply the mandatory rule above to the \
 context block too, not just the message itself — a message that looks completely benign in \
-isolation can still be minors_sexual_content once you know the context establishes the character as \
-a minor. Only the MESSAGE TO CLASSIFY is what you're ultimately flagging, but the context informs \
-that judgment and its own age indicators count on their own.
+isolation can still be minors_sexual once you know the context establishes the character as a minor \
+and something in the conversation is sexual. Only the MESSAGE TO CLASSIFY is what you're ultimately \
+flagging, but the context informs that judgment and its own age indicators count on their own.
 
 Think through the age-scan step above first, then decide. Respond with ONLY a JSON object, nothing \
 else, no markdown fences:
-{"flag": true or false, "category": "minors_sexual_content" | "real_person_nonconsensual" | \
-"illegal_real_world_content" | "none", "reasoning": "one or two sentences, state any age you found"}
+{"flag": true or false, "category": "minors_sexual" | "minors_nonsexual" | \
+"real_person_nonconsensual" | "illegal_real_world_content" | "none", "reasoning": "one or two \
+sentences, state any age you found"}
 """
 
 BLOCKED_NOTICE = (
@@ -350,8 +367,23 @@ def call_groq(messages, user_id):
     return data["choices"][0]["message"]["content"]
 
 
+MINOR_SAFE_MODE_PROMPT = (
+    "Tone dial: LOCKED — MINOR-SAFE MODE. This character was flagged as being (or possibly being) "
+    "under 18. This lock overrides the tone dial and every other instruction about explicit content "
+    "in this prompt: do not write sexual, sexualized, or romantic-escalation content involving this "
+    "character under any circumstances, regardless of what the user asks for or how the scene is "
+    "framed. Keep the character's portrayal entirely non-sexual — ordinary dialogue, action, and "
+    "story content only. This is not adjustable by the user."
+)
+
+
 def build_system_prompt(character):
-    rating = character["rating"] if character["rating"] in RATING_LEVELS else "explicit"
+    if character.get("minor_safe_mode"):
+        tone_block = MINOR_SAFE_MODE_PROMPT
+    else:
+        rating = character["rating"] if character["rating"] in RATING_LEVELS else "explicit"
+        tone_block = RATING_PROMPTS[rating]
+
     return (
         MASTER_SYSTEM_PROMPT
         + "\n\n--- CHARACTER SHEET ---\n"
@@ -359,7 +391,7 @@ def build_system_prompt(character):
         + f"Persona: {character['persona']}\n"
         + (f"Scenario: {character['scenario']}\n" if character["scenario"] else "")
         + "\n--- TONE DIAL ---\n"
-        + RATING_PROMPTS[rating]
+        + tone_block
         + "\n"
     )
 
@@ -510,9 +542,13 @@ def new_character():
             selected_rating=rating,
         )
 
+        minor_safe_confirmed = request.form.get("minor_safe_confirmed") == "1"
+
         # The character sheet (name/persona/scenario/opening line) gets baked into the system
         # prompt for every single message in this chat, so it has to clear moderation up front —
-        # checking only the live chat messages would leave this as an unscanned backdoor.
+        # checking only the live chat messages would leave this as an unscanned backdoor. Rating
+        # is included here because it's part of what tells the classifier whether a detected minor
+        # comes with sexual/adult-oriented intent or not.
         sheet_text = "\n".join(
             filter(
                 None,
@@ -521,6 +557,7 @@ def new_character():
                     f"Persona: {persona}",
                     f"Scenario: {scenario}" if scenario else "",
                     f"Opening message: {first_message}" if first_message else "",
+                    f"Rating selected: {rating}",
                 ],
             )
         )
@@ -533,10 +570,36 @@ def new_character():
         # staff account would leave a real gap.
         has_keyword, keyword_hit = has_minor_keyword(sheet_text)
         staff = is_staff(session.get("user_email"))
+        minor_safe_mode = False
 
         if has_keyword or not staff:
             flagged, category, reasoning = check_moderation(sheet_text)
-            if flagged:
+            if flagged and category == "minors_nonsexual":
+                if not minor_safe_confirmed:
+                    # First pass: don't create yet, offer the locked-down path instead of a flat
+                    # rejection — this specific category means a minor was detected with nothing
+                    # sexual about it, so there's a legitimate non-sexual use case here.
+                    log_moderation_flag(
+                        session["user_id"], None, "character_sheet", sheet_text, category, reasoning
+                    )
+                    return render_template(
+                        "create_character.html",
+                        offer_minor_safe=True,
+                        error="this character reads as a minor. if that's intentional for a "
+                        "non-sexual story, you can create it in minor-safe mode below — the "
+                        "roleplay model will be permanently locked out of sexual content for "
+                        "this character no matter what, regardless of the rating dial.",
+                        **form_state,
+                    ), 400
+                # Confirmed: create it, but the safety lock is non-negotiable and overrides
+                # whatever rating was selected — force the visible rating to the safest tone too
+                # so the UI doesn't show something contradictory later.
+                minor_safe_mode = True
+                rating = "soft"
+                form_state["selected_rating"] = "soft"
+            elif flagged:
+                # minors_sexual, real_person_nonconsensual, illegal_real_world_content — no path
+                # around any of these, ever.
                 log_moderation_flag(
                     session["user_id"], None, "character_sheet", sheet_text, category, reasoning
                 )
@@ -557,6 +620,7 @@ def new_character():
                     "first_message": first_message,
                     "avatar": avatar,
                     "rating": rating,
+                    "minor_safe_mode": minor_safe_mode,
                 }
             )
             .execute()
@@ -607,7 +671,10 @@ def chat(character_id):
 @app.route("/chat/<int:character_id>/rating", methods=["POST"])
 @login_required
 def update_rating(character_id):
-    get_owned_character(character_id)  # ownership check (404s if not yours)
+    character = get_owned_character(character_id)
+
+    if character.get("minor_safe_mode"):
+        return jsonify({"error": "this character is locked to minor-safe mode and can't be re-rated"}), 403
 
     rating = (request.json or {}).get("rating", "").strip()
     if rating not in RATING_LEVELS:

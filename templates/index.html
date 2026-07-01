@@ -31,7 +31,13 @@
             </div>
             <div class="card-body">
               <h2>{{ c['name'] }}</h2>
-              <div><span class="card-rating-tag">{{ c['rating'] }}</span></div>
+              <div>
+                {% if c['minor_safe_mode'] %}
+                  <span class="minor-safe-tag">minor-safe</span>
+                {% else %}
+                  <span class="card-rating-tag">{{ c['rating'] }}</span>
+                {% endif %}
+              </div>
               <p>{{ c['persona'][:110] }}{% if c['persona']|length > 110 %}…{% endif %}</p>
             </div>
           </a>

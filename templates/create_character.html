@@ -12,6 +12,13 @@
   {% endif %}
 
   <form method="post" class="form">
+    {% if offer_minor_safe %}
+      <label class="minor-safe-check">
+        <input type="checkbox" name="minor_safe_confirmed" value="1">
+        this is a non-sexual story — create in <strong>minor-safe mode</strong> (permanently locks
+        this character out of sexual content, overrides the rating dial, can't be undone later)
+      </label>
+    {% endif %}
     <div class="avatar-preview-row">
       <div class="avatar-preview" id="avatar-preview">{{ avatar if avatar else "?" }}</div>
       <div style="flex:1">

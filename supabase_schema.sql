@@ -12,6 +12,7 @@ create table if not exists characters (
   first_message text,
   avatar text,
   rating text not null default 'explicit',
+  minor_safe_mode boolean not null default false,
   created_at timestamptz not null default now()
 );
 

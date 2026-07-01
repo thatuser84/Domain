@@ -18,11 +18,15 @@
       </div>
     </div>
     <div class="chat-controls">
-      <select id="rating-select" class="rating-select" title="content rating — tone/explicitness only">
-        {% for level in rating_levels %}
-          <option value="{{ level }}" {% if level == current_rating %}selected{% endif %}>{{ rating_labels[level] }}</option>
-        {% endfor %}
-      </select>
+      {% if character['minor_safe_mode'] %}
+        <span class="minor-safe-tag" title="this character is permanently locked out of sexual content">minor-safe</span>
+      {% else %}
+        <select id="rating-select" class="rating-select" title="content rating — tone/explicitness only">
+          {% for level in rating_levels %}
+            <option value="{{ level }}" {% if level == current_rating %}selected{% endif %}>{{ rating_labels[level] }}</option>
+          {% endfor %}
+        </select>
+      {% endif %}
       <form method="post" action="{{ url_for('reset_chat', character_id=character['id']) }}" onsubmit="return confirm('reset this chat? history will be wiped.');">
         <button type="submit" class="btn btn-ghost btn-icon" title="reset chat">
           <svg class="icon" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
@@ -61,7 +65,7 @@
   const ratingSaved = document.getElementById("rating-saved");
   let ratingSavedTimer = null;
 
-  ratingSelect.addEventListener("change", async () => {
+  if (ratingSelect) ratingSelect.addEventListener("change", async () => {
     try {
       await fetch(`/chat/${characterId}/rating`, {
         method: "POST",
