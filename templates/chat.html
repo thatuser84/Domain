@@ -52,6 +52,11 @@
         <div class="msg-bubble">
           {% if m['is_ooc'] %}<span class="ooc-tag">ooc</span>{% endif %}
           {{ m['content'] }}
+          {% if m['role'] == 'assistant' %}
+            <button type="button" class="regen-btn" title="regenerate this reply">
+              <svg class="icon" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+            </button>
+          {% endif %}
         </div>
       </div>
     {% endfor %}

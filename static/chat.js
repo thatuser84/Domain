@@ -29,6 +29,15 @@ function scrollToBottom() {
 }
 scrollToBottom();
 
+function makeRegenButton() {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "regen-btn";
+  btn.title = "regenerate this reply";
+  btn.innerHTML = '<svg class="icon" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>';
+  return btn;
+}
+
 function appendMessage(role, content, isOoc) {
   const wrap = document.createElement("div");
   wrap.className = `msg msg-${role}${isOoc ? " msg-ooc" : ""}`;
@@ -63,7 +72,7 @@ function appendMessage(role, content, isOoc) {
   return bubble;
 }
 
-function setBubbleContent(bubble, content, isOoc) {
+function setBubbleContent(bubble, content, isOoc, isError) {
   bubble.innerHTML = "";
   if (isOoc) {
     const tag = document.createElement("span");
@@ -73,6 +82,7 @@ function setBubbleContent(bubble, content, isOoc) {
     bubble.parentElement.classList.add("msg-ooc");
   }
   bubble.appendChild(document.createTextNode(content));
+  if (!isError) bubble.appendChild(makeRegenButton());
 }
 
 input.addEventListener("input", () => {
@@ -113,16 +123,46 @@ composer.addEventListener("submit", async (e) => {
     const data = await res.json();
     typingBubble.classList.remove("typing");
     if (!res.ok) {
-      setBubbleContent(typingBubble, `[error] ${data.error || "something broke"}`, false);
+      setBubbleContent(typingBubble, `[error] ${data.error || "something broke"}`, false, true);
       typingBubble.parentElement.classList.add("msg-error");
     } else {
-      setBubbleContent(typingBubble, data.reply, data.ooc);
+      setBubbleContent(typingBubble, data.reply, data.ooc, false);
       renderSuggestions(data.suggestions);
     }
   } catch (err) {
     typingBubble.classList.remove("typing");
-    setBubbleContent(typingBubble, `[error] ${err.message}`, false);
+    setBubbleContent(typingBubble, `[error] ${err.message}`, false, true);
     typingBubble.parentElement.classList.add("msg-error");
+  }
+  scrollToBottom();
+});
+
+// Only ever fires from the last assistant message — CSS only shows .regen-btn on
+// .msg-assistant:last-child, so there's nothing to guard against re-triggering elsewhere.
+messagesEl.addEventListener("click", async (e) => {
+  const btn = e.target.closest(".regen-btn");
+  if (!btn) return;
+
+  const bubble = btn.closest(".msg-bubble");
+  suggestionsEl.innerHTML = "";
+  bubble.classList.add("typing");
+  btn.disabled = true;
+
+  try {
+    const res = await fetch(`/chat/${chatId}/regenerate`, { method: "POST" });
+    const data = await res.json();
+    bubble.classList.remove("typing");
+    if (!res.ok) {
+      setBubbleContent(bubble, `[error] ${data.error || "something broke"}`, false, true);
+      bubble.parentElement.classList.add("msg-error");
+    } else {
+      setBubbleContent(bubble, data.reply, data.ooc, false);
+      renderSuggestions(data.suggestions);
+    }
+  } catch (err) {
+    bubble.classList.remove("typing");
+    setBubbleContent(bubble, `[error] ${err.message}`, false, true);
+    bubble.parentElement.classList.add("msg-error");
   }
   scrollToBottom();
 });

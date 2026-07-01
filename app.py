@@ -1446,6 +1446,61 @@ def update_rating(chat_id):
     return jsonify({"ok": True, "rating": rating})
 
 
+def generate_and_store_assistant_reply(chat_id, chat_row, character, history, true_private, is_ooc, replace_message_id=None):
+    """Shared by send_message and regenerate_reply: builds the API messages from history, calls
+    the roleplay model, moderates the reply, stores it (encrypted if true_private), updates
+    last_message_at, and generates suggestion chips.
+
+    If replace_message_id is given (regeneration), that message is only deleted AFTER a new reply
+    is successfully generated — if the model call fails, the old reply stays intact instead of
+    getting wiped out with nothing to replace it."""
+    api_messages = [{"role": "system", "content": build_system_prompt(character, chat_row)}]
+    api_messages += [
+        {"role": row["role"], "content": wrap_ooc(row["content"]) if row.get("is_ooc") else row["content"]}
+        for row in history
+    ]
+
+    try:
+        reply = call_roleplay_model(api_messages, session["user_id"])
+    except requests.HTTPError as e:
+        provider, _, _, _ = get_llm_config(session["user_id"])
+        provider_label = PROVIDER_PRESETS.get(provider, PROVIDER_PRESETS["custom"])["label"]
+        return jsonify({"error": f"{provider_label} api error: {e.response.text}"}), 502
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    staff = is_staff(session.get("user_email"))
+    if not staff:
+        character_context = (
+            f"Name: {character['name']}\nPersona: {character['persona']}"
+            + (f"\nScenario: {character['scenario']}" if character["scenario"] else "")
+        )
+        reply_flagged, reply_category, reply_reasoning = check_moderation(reply, context=character_context)
+        if reply_flagged and reply_category != "minors_nonsexual":
+            log_moderation_flag(
+                session["user_id"], character["id"], "assistant_reply", reply, reply_category, reply_reasoning
+            )
+            reply = BLOCKED_NOTICE
+
+    if replace_message_id is not None:
+        db.table("messages").delete().eq("id", replace_message_id).execute()
+
+    stored_reply = encrypt_content(reply) if (true_private and reply != BLOCKED_NOTICE) else reply
+    db.table("messages").insert(
+        {"chat_id": chat_id, "role": "assistant", "content": stored_reply, "is_ooc": is_ooc}
+    ).execute()
+    db.table("chats").update({"last_message_at": datetime.utcnow().isoformat()}).eq("id", chat_id).execute()
+
+    # Skip suggestions right after an OOC exchange — "things you could say next" doesn't make much
+    # sense immediately after a meta/config aside, the user just wants to get back to the scene
+    # their own way.
+    suggestions = []
+    if reply != BLOCKED_NOTICE and not is_ooc:
+        suggestions = generate_reply_suggestions(character, history + [{"role": "assistant", "content": reply}], session["user_id"])
+
+    return jsonify({"reply": reply, "suggestions": suggestions, "ooc": is_ooc})
+
+
 @app.route("/chat/<int:chat_id>/send", methods=["POST"])
 @login_required
 def send_message(chat_id):
@@ -1508,43 +1563,40 @@ def send_message(chat_id):
         for row in history:
             row["content"] = decrypt_content(row["content"])
 
-    api_messages = [{"role": "system", "content": build_system_prompt(character, chat_row)}]
-    api_messages += [
-        {"role": row["role"], "content": wrap_ooc(row["content"]) if row.get("is_ooc") else row["content"]}
-        for row in history
-    ]
+    return generate_and_store_assistant_reply(chat_id, chat_row, character, history, true_private, is_ooc)
 
-    try:
-        reply = call_roleplay_model(api_messages, session["user_id"])
-    except requests.HTTPError as e:
-        provider, _, _, _ = get_llm_config(session["user_id"])
-        provider_label = PROVIDER_PRESETS.get(provider, PROVIDER_PRESETS["custom"])["label"]
-        return jsonify({"error": f"{provider_label} api error: {e.response.text}"}), 502
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
-    if not staff:
-        reply_flagged, reply_category, reply_reasoning = check_moderation(reply, context=character_context)
-        if reply_flagged and reply_category != "minors_nonsexual":
-            log_moderation_flag(
-                session["user_id"], character["id"], "assistant_reply", reply, reply_category, reply_reasoning
-            )
-            reply = BLOCKED_NOTICE
+@app.route("/chat/<int:chat_id>/regenerate", methods=["POST"])
+@login_required
+def regenerate_reply(chat_id):
+    """The 'refresh' action on the last assistant message — throws out that reply and generates a
+    fresh one from the same history. Only valid when the last message in the thread is actually
+    an assistant reply (nothing to regenerate if the user hasn't gotten one yet)."""
+    chat_row, character = get_owned_chat(chat_id)
+    true_private = chat_row.get("true_private", False)
 
-    stored_reply = encrypt_content(reply) if (true_private and reply != BLOCKED_NOTICE) else reply
-    db.table("messages").insert(
-        {"chat_id": chat_id, "role": "assistant", "content": stored_reply, "is_ooc": is_ooc}
-    ).execute()
-    db.table("chats").update({"last_message_at": datetime.utcnow().isoformat()}).eq("id", chat_id).execute()
+    history_res = (
+        db.table("messages")
+        .select("id,role,content,is_ooc")
+        .eq("chat_id", chat_id)
+        .order("id", desc=False)
+        .execute()
+    )
+    history = history_res.data
+    if not history or history[-1]["role"] != "assistant":
+        return jsonify({"error": "nothing to regenerate yet"}), 400
 
-    # Skip suggestions right after an OOC exchange — "things you could say next" doesn't make much
-    # sense immediately after a meta/config aside, the user just wants to get back to the scene
-    # their own way.
-    suggestions = []
-    if reply != BLOCKED_NOTICE and not is_ooc:
-        suggestions = generate_reply_suggestions(character, history + [{"role": "assistant", "content": reply}], session["user_id"])
+    replace_message_id = history[-1]["id"]
+    history = history[:-1]  # drop the reply being replaced — everything before it is the context
+    was_ooc = history[-1]["is_ooc"] if history else False
 
-    return jsonify({"reply": reply, "suggestions": suggestions, "ooc": is_ooc})
+    if true_private:
+        for row in history:
+            row["content"] = decrypt_content(row["content"])
+
+    return generate_and_store_assistant_reply(
+        chat_id, chat_row, character, history, true_private, was_ooc, replace_message_id=replace_message_id
+    )
 
 
 @app.route("/chat/<int:chat_id>/reset", methods=["POST"])
