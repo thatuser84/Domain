@@ -705,7 +705,10 @@ def send_message(character_id):
 
     if not staff:
         flagged, category, reasoning = check_moderation(user_text, context=character_context)
-        if flagged:
+        # minors_nonsexual means "yes there's a minor in this context, no this specific message
+        # isn't sexual" — that's expected/fine for an ordinary message in a minor-safe-mode chat,
+        # not a violation. Only block on minors_sexual and the other two hard categories.
+        if flagged and category != "minors_nonsexual":
             log_moderation_flag(
                 session["user_id"], character_id, "user_message", user_text, category, reasoning
             )
@@ -734,7 +737,7 @@ def send_message(character_id):
 
     if not staff:
         reply_flagged, reply_category, reply_reasoning = check_moderation(reply, context=character_context)
-        if reply_flagged:
+        if reply_flagged and reply_category != "minors_nonsexual":
             log_moderation_flag(
                 session["user_id"], character_id, "assistant_reply", reply, reply_category, reply_reasoning
             )
