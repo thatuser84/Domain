@@ -33,6 +33,7 @@ create table if not exists chats (
   user_id uuid not null references auth.users(id) on delete cascade,
   title text not null default 'Chat',
   rating text not null default 'explicit',
+  true_private boolean not null default false,
   created_at timestamptz not null default now(),
   last_message_at timestamptz not null default now()
 );

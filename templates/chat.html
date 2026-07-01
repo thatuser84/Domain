@@ -20,6 +20,9 @@
       </div>
     </div>
     <div class="chat-controls">
+      {% if chat['true_private'] %}
+        <span class="true-private-tag" title="this thread's messages are encrypted at rest — not visible even to the operator unless something in it actually gets flagged">🔒 true-private</span>
+      {% endif %}
       {% if character['minor_safe_mode'] %}
         <span class="minor-safe-tag" title="this character is permanently locked out of sexual content">minor-safe</span>
       {% else %}

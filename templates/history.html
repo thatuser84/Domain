@@ -29,6 +29,7 @@
               </span>
             </span>
             <span class="chat-list-meta">
+              {% if c['true_private'] %}<span class="true-private-tag">🔒</span>{% endif %}
               {% if not c['character']['minor_safe_mode'] %}<span class="card-rating-tag">{{ c['rating'] }}</span>{% endif %}
               <span class="chat-list-time">{{ c['last_message_at'][:16].replace('T', ' ') }}</span>
             </span>

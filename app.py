@@ -2,16 +2,18 @@ import os
 import json
 import math
 import uuid
+import random
 import re as _re
 from collections import Counter
 from functools import wraps
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 import requests
 from flask import Flask, request, jsonify, render_template, redirect, url_for, session, abort
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from werkzeug.middleware.proxy_fix import ProxyFix
+from cryptography.fernet import Fernet, InvalidToken
 
 load_dotenv()
 
@@ -362,6 +364,76 @@ def log_moderation_flag(user_id, character_id, source, content, category, reason
         ).execute()
     except Exception:
         pass  # logging the flag should never be why a request 500s
+
+
+# ---------------------------------------------------------------------------
+# True-private threads. This is NOT just a UI label — "can't be seen unless flagged" has to hold
+# up even against someone browsing the Supabase Table Editor directly, which an app-level
+# permission check can't do anything about. So message content for these chats is genuinely
+# encrypted at rest with a server-held key. Moderation still runs on the plaintext before it's
+# ever encrypted (see send_message), so a real violation still gets caught and logged in the
+# clear in moderation_flags — that log is the "unless flagged" visibility path. Short of that, the
+# stored rows are ciphertext, not just access-restricted.
+# ---------------------------------------------------------------------------
+TRUE_PRIVATE_KEY = os.environ.get("TRUE_PRIVATE_ENCRYPTION_KEY", "")
+_fernet = Fernet(TRUE_PRIVATE_KEY.encode()) if TRUE_PRIVATE_KEY else None
+TRUE_PRIVATE_CHANCE = float(os.environ.get("TRUE_PRIVATE_CHANCE", "0.25"))
+TRUE_PRIVATE_CLEAN_DAYS = 7
+
+_ENC_PREFIX = "enc:v1:"
+
+
+def encrypt_content(text):
+    if not _fernet:
+        return text
+    return _ENC_PREFIX + _fernet.encrypt(text.encode()).decode()
+
+
+def decrypt_content(text):
+    if not text or not text.startswith(_ENC_PREFIX):
+        return text
+    if not _fernet:
+        return "[encrypted — this server has no decryption key configured]"
+    try:
+        return _fernet.decrypt(text[len(_ENC_PREFIX):].encode()).decode()
+    except InvalidToken:
+        return "[couldn't decrypt this message]"
+
+
+def is_trust_eligible(user_id):
+    """Staff always qualify. Everyone else needs a 7+ day old account with zero moderation flags
+    in the last 7 days — a brand new account can't trivially claim 'never been flagged' just by
+    having no history yet."""
+    if is_staff(session.get("user_email")):
+        return True
+
+    settings = get_user_settings(user_id)
+    accepted_at = settings.get("terms_accepted_at")
+    if not accepted_at:
+        return False
+    try:
+        accepted_dt = datetime.fromisoformat(accepted_at.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if datetime.now(timezone.utc) - accepted_dt < timedelta(days=TRUE_PRIVATE_CLEAN_DAYS):
+        return False
+
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=TRUE_PRIVATE_CLEAN_DAYS)).isoformat()
+    recent_flags = (
+        db.table("moderation_flags")
+        .select("id")
+        .eq("user_id", user_id)
+        .gte("created_at", cutoff)
+        .limit(1)
+        .execute()
+    )
+    return len(recent_flags.data) == 0
+
+
+def should_grant_true_private(user_id):
+    if is_staff(session.get("user_email")):
+        return True
+    return is_trust_eligible(user_id) and random.random() < TRUE_PRIVATE_CHANCE
 
 
 # ---------------------------------------------------------------------------
@@ -866,19 +938,30 @@ def create_chat_for_character(character, user_id, title="Chat", rating=None):
     """Creates a new conversation thread for a character and seeds it with the character's
     opening line, if it has one. Returns the new chat's id. Each thread has its own tone-dial
     rating, defaulting to the character's rating — minor_safe_mode always wins regardless of this
-    at generation time, this is purely the heat level for non-locked characters."""
+    at generation time, this is purely the heat level for non-locked characters.
+
+    Also rolls for true-private status: staff always get it, everyone else needs a clean 7-day
+    trust window plus a random draw. See should_grant_true_private."""
     if rating not in RATING_LEVELS:
         rating = character["rating"] if character["rating"] in RATING_LEVELS else "explicit"
+    true_private = should_grant_true_private(user_id)
     chat_res = (
         db.table("chats")
-        .insert({"character_id": character["id"], "user_id": user_id, "title": title, "rating": rating})
+        .insert(
+            {
+                "character_id": character["id"],
+                "user_id": user_id,
+                "title": title,
+                "rating": rating,
+                "true_private": true_private,
+            }
+        )
         .execute()
     )
     chat_id = chat_res.data[0]["id"]
     if character.get("first_message"):
-        db.table("messages").insert(
-            {"chat_id": chat_id, "role": "assistant", "content": character["first_message"]}
-        ).execute()
+        content = encrypt_content(character["first_message"]) if true_private else character["first_message"]
+        db.table("messages").insert({"chat_id": chat_id, "role": "assistant", "content": content}).execute()
     return chat_id
 
 
@@ -1165,12 +1248,16 @@ def chat(chat_id):
     msgs_res = (
         db.table("messages").select("*").eq("chat_id", chat_id).order("id", desc=False).execute()
     )
+    messages = msgs_res.data
+    if chat_row.get("true_private"):
+        for m in messages:
+            m["content"] = decrypt_content(m["content"])
     current_rating = chat_row["rating"] if chat_row["rating"] in RATING_LEVELS else "explicit"
     return render_template(
         "chat.html",
         chat=chat_row,
         character=character,
-        messages=msgs_res.data,
+        messages=messages,
         rating_levels=RATING_LEVELS,
         rating_labels=RATING_LABELS,
         current_rating=current_rating,
@@ -1205,12 +1292,17 @@ def update_rating(chat_id):
 @login_required
 def send_message(chat_id):
     chat_row, character = get_owned_chat(chat_id)
+    true_private = chat_row.get("true_private", False)
 
     user_text = (request.json or {}).get("message", "").strip()
     if not user_text:
         return jsonify({"error": "empty message"}), 400
 
-    db.table("messages").insert({"chat_id": chat_id, "role": "user", "content": user_text}).execute()
+    # Moderation always runs on the plaintext variables below, before anything gets encrypted for
+    # storage — encryption only happens at the .insert() calls themselves.
+    db.table("messages").insert(
+        {"chat_id": chat_id, "role": "user", "content": encrypt_content(user_text) if true_private else user_text}
+    ).execute()
 
     staff = is_staff(session.get("user_email"))
     character_context = (
@@ -1239,9 +1331,13 @@ def send_message(chat_id):
         .order("id", desc=False)
         .execute()
     )
+    history = history_res.data
+    if true_private:
+        for row in history:
+            row["content"] = decrypt_content(row["content"])
 
     api_messages = [{"role": "system", "content": build_system_prompt(character, chat_row)}]
-    api_messages += [{"role": row["role"], "content": row["content"]} for row in history_res.data]
+    api_messages += [{"role": row["role"], "content": row["content"]} for row in history]
 
     try:
         reply = call_roleplay_model(api_messages, session["user_id"])
@@ -1260,7 +1356,8 @@ def send_message(chat_id):
             )
             reply = BLOCKED_NOTICE
 
-    db.table("messages").insert({"chat_id": chat_id, "role": "assistant", "content": reply}).execute()
+    stored_reply = encrypt_content(reply) if (true_private and reply != BLOCKED_NOTICE) else reply
+    db.table("messages").insert({"chat_id": chat_id, "role": "assistant", "content": stored_reply}).execute()
     db.table("chats").update({"last_message_at": datetime.utcnow().isoformat()}).eq("id", chat_id).execute()
 
     return jsonify({"reply": reply})
@@ -1272,9 +1369,12 @@ def reset_chat(chat_id):
     chat_row, character = get_owned_chat(chat_id)
     db.table("messages").delete().eq("chat_id", chat_id).execute()
     if character.get("first_message"):
-        db.table("messages").insert(
-            {"chat_id": chat_id, "role": "assistant", "content": character["first_message"]}
-        ).execute()
+        content = (
+            encrypt_content(character["first_message"])
+            if chat_row.get("true_private")
+            else character["first_message"]
+        )
+        db.table("messages").insert({"chat_id": chat_id, "role": "assistant", "content": content}).execute()
     return redirect(url_for("chat", chat_id=chat_id))
 
 
