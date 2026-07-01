@@ -1,6 +1,7 @@
 import os
 import json
 import math
+import uuid
 import re as _re
 from collections import Counter
 from functools import wraps
@@ -531,11 +532,11 @@ MINOR_SAFE_MODE_PROMPT = (
 )
 
 
-def build_system_prompt(character):
+def build_system_prompt(character, chat_row):
     if character.get("minor_safe_mode"):
         tone_block = MINOR_SAFE_MODE_PROMPT
     else:
-        rating = character["rating"] if character["rating"] in RATING_LEVELS else "explicit"
+        rating = chat_row["rating"] if chat_row["rating"] in RATING_LEVELS else "explicit"
         tone_block = RATING_PROMPTS[rating]
 
     return (
@@ -664,12 +665,50 @@ def settings():
     )
 
 
-def create_chat_for_character(character, user_id, title="Chat"):
+AVATAR_BUCKET = "character-avatars"
+AVATAR_MAX_BYTES = 3 * 1024 * 1024  # matches the bucket's own file_size_limit, checked here too
+# so we can return a clean error instead of letting the storage API reject it.
+AVATAR_ALLOWED_TYPES = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/webp": "webp",
+    "image/gif": "gif",
+}
+
+
+def upload_character_avatar(user_id, file_storage):
+    """Uploads a character profile picture to Supabase Storage, returns the public URL. Returns
+    None (silently, no error) if no file was actually chosen — this field is optional. Raises
+    ValueError with a user-facing message for a bad file (wrong type, too big)."""
+    if not file_storage or not file_storage.filename:
+        return None
+
+    content_type = file_storage.mimetype
+    ext = AVATAR_ALLOWED_TYPES.get(content_type)
+    if not ext:
+        raise ValueError("avatar image needs to be a png, jpg, webp, or gif.")
+
+    file_bytes = file_storage.read()
+    if len(file_bytes) > AVATAR_MAX_BYTES:
+        raise ValueError("avatar image is too big — 3MB max.")
+
+    path = f"{user_id}/{uuid.uuid4().hex}.{ext}"
+    db.storage.from_(AVATAR_BUCKET).upload(
+        path, file_bytes, file_options={"content-type": content_type, "upsert": "true"}
+    )
+    return db.storage.from_(AVATAR_BUCKET).get_public_url(path)
+
+
+def create_chat_for_character(character, user_id, title="Chat", rating=None):
     """Creates a new conversation thread for a character and seeds it with the character's
-    opening line, if it has one. Returns the new chat's id."""
+    opening line, if it has one. Returns the new chat's id. Each thread has its own tone-dial
+    rating, defaulting to the character's rating — minor_safe_mode always wins regardless of this
+    at generation time, this is purely the heat level for non-locked characters."""
+    if rating not in RATING_LEVELS:
+        rating = character["rating"] if character["rating"] in RATING_LEVELS else "explicit"
     chat_res = (
         db.table("chats")
-        .insert({"character_id": character["id"], "user_id": user_id, "title": title})
+        .insert({"character_id": character["id"], "user_id": user_id, "title": title, "rating": rating})
         .execute()
     )
     chat_id = chat_res.data[0]["id"]
@@ -691,6 +730,27 @@ def index():
         .execute()
     )
     return render_template("index.html", characters=res.data)
+
+
+@app.route("/history")
+@login_required
+def history():
+    chats_res = (
+        db.table("chats")
+        .select("*")
+        .eq("user_id", session["user_id"])
+        .order("last_message_at", desc=True)
+        .execute()
+    )
+    chats = chats_res.data
+    if chats:
+        char_ids = list({c["character_id"] for c in chats})
+        chars_res = db.table("characters").select("*").in_("id", char_ids).execute()
+        chars_by_id = {c["id"]: c for c in chars_res.data}
+        for c in chats:
+            c["character"] = chars_by_id.get(c["character_id"])
+        chats = [c for c in chats if c["character"] is not None]  # drop orphans defensively
+    return render_template("history.html", chats=chats)
 
 
 @app.route("/community")
@@ -752,6 +812,11 @@ def new_character():
             selected_rating=rating,
             selected_visibility=visibility,
         )
+
+        try:
+            avatar_url = upload_character_avatar(session["user_id"], request.files.get("avatar_image"))
+        except ValueError as e:
+            return render_template("create_character.html", error=str(e), **form_state), 400
 
         minor_safe_confirmed = request.form.get("minor_safe_confirmed") == "1"
 
@@ -833,6 +898,7 @@ def new_character():
                     "scenario": scenario,
                     "first_message": first_message,
                     "avatar": avatar,
+                    "avatar_url": avatar_url,
                     "rating": rating,
                     "minor_safe_mode": minor_safe_mode,
                     "visibility": visibility,
@@ -885,7 +951,12 @@ def character_detail(character_id):
     )
     is_owner = character["user_id"] == session["user_id"]
     return render_template(
-        "character_detail.html", character=character, chats=chats_res.data, is_owner=is_owner
+        "character_detail.html",
+        character=character,
+        chats=chats_res.data,
+        is_owner=is_owner,
+        rating_levels=RATING_LEVELS,
+        rating_labels=RATING_LABELS,
     )
 
 
@@ -893,7 +964,8 @@ def character_detail(character_id):
 @login_required
 def new_chat(character_id):
     character = get_visible_character(character_id)
-    chat_id = create_chat_for_character(character, session["user_id"])
+    rating = request.form.get("rating", "").strip() or None
+    chat_id = create_chat_for_character(character, session["user_id"], rating=rating)
     return redirect(url_for("chat", chat_id=chat_id))
 
 
@@ -904,7 +976,7 @@ def chat(chat_id):
     msgs_res = (
         db.table("messages").select("*").eq("chat_id", chat_id).order("id", desc=False).execute()
     )
-    current_rating = character["rating"] if character["rating"] in RATING_LEVELS else "explicit"
+    current_rating = chat_row["rating"] if chat_row["rating"] in RATING_LEVELS else "explicit"
     return render_template(
         "chat.html",
         chat=chat_row,
@@ -924,10 +996,10 @@ def delete_chat(chat_id):
     return redirect(url_for("character_detail", character_id=character["id"]))
 
 
-@app.route("/character/<int:character_id>/rating", methods=["POST"])
+@app.route("/chat/<int:chat_id>/rating", methods=["POST"])
 @login_required
-def update_rating(character_id):
-    character = get_owned_character(character_id)
+def update_rating(chat_id):
+    chat_row, character = get_owned_chat(chat_id)
 
     if character.get("minor_safe_mode"):
         return jsonify({"error": "this character is locked to minor-safe mode and can't be re-rated"}), 403
@@ -936,7 +1008,7 @@ def update_rating(character_id):
     if rating not in RATING_LEVELS:
         return jsonify({"error": "invalid rating"}), 400
 
-    db.table("characters").update({"rating": rating}).eq("id", character_id).execute()
+    db.table("chats").update({"rating": rating}).eq("id", chat_id).execute()
     return jsonify({"ok": True, "rating": rating})
 
 
@@ -979,7 +1051,7 @@ def send_message(chat_id):
         .execute()
     )
 
-    api_messages = [{"role": "system", "content": build_system_prompt(character)}]
+    api_messages = [{"role": "system", "content": build_system_prompt(character, chat_row)}]
     api_messages += [{"role": row["role"], "content": row["content"]} for row in history_res.data]
 
     try:

@@ -11,7 +11,7 @@
     <div class="banner banner-warn">{{ error }}</div>
   {% endif %}
 
-  <form method="post" class="form">
+  <form method="post" class="form" enctype="multipart/form-data">
     {% if offer_minor_safe %}
       <label class="minor-safe-check">
         <input type="checkbox" name="minor_safe_confirmed" value="1">
@@ -24,6 +24,8 @@
       <div style="flex:1">
         <label for="avatar" style="margin-top:0">avatar (emoji or single letter, optional)</label>
         <input type="text" id="avatar" name="avatar" maxlength="2" placeholder="🦊" value="{{ avatar or '' }}">
+        <label for="avatar_image">or upload a picture instead (png/jpg/webp/gif, 3MB max)</label>
+        <input type="file" id="avatar_image" name="avatar_image" accept="image/png,image/jpeg,image/webp,image/gif">
       </div>
     </div>
 
@@ -61,13 +63,27 @@
 <script>
   const nameInput = document.getElementById("name");
   const avatarInput = document.getElementById("avatar");
+  const avatarImageInput = document.getElementById("avatar_image");
   const preview = document.getElementById("avatar-preview");
 
   function updatePreview() {
+    if (avatarImageInput.files && avatarImageInput.files[0]) return; // image preview owns it
     const avatar = avatarInput.value.trim();
     const name = nameInput.value.trim();
     preview.textContent = avatar || (name ? name[0].toUpperCase() : "?");
   }
+
+  avatarImageInput.addEventListener("change", () => {
+    const file = avatarImageInput.files[0];
+    if (!file) { updatePreview(); return; }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      preview.textContent = "";
+      preview.innerHTML = `<img src="${e.target.result}" alt="">`;
+    };
+    reader.readAsDataURL(file);
+  });
+
   avatarInput.addEventListener("input", updatePreview);
   nameInput.addEventListener("input", updatePreview);
 </script>

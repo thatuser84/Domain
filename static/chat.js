@@ -14,7 +14,14 @@ function appendMessage(role, content) {
   if (role === "assistant") {
     const avatar = document.createElement("div");
     avatar.className = "msg-avatar";
-    avatar.textContent = characterAvatar;
+    if (characterAvatarUrl) {
+      const img = document.createElement("img");
+      img.src = characterAvatarUrl;
+      img.alt = "";
+      avatar.appendChild(img);
+    } else {
+      avatar.textContent = characterAvatar;
+    }
     wrap.appendChild(avatar);
   }
 

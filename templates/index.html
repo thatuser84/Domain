@@ -27,7 +27,9 @@
         <div class="card" data-name="{{ c['name']|lower }}">
           <a class="card-link" href="{{ url_for('character_detail', character_id=c['id']) }}">
             <div class="card-avatar-wrap">
-              <div class="card-avatar">{{ c['avatar'] if c['avatar'] else c['name'][0]|upper }}</div>
+              <div class="card-avatar">
+                {% if c['avatar_url'] %}<img src="{{ c['avatar_url'] }}" alt="">{% else %}{{ c['avatar'] if c['avatar'] else c['name'][0]|upper }}{% endif %}
+              </div>
             </div>
             <div class="card-body">
               <h2>{{ c['name'] }}</h2>

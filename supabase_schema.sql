@@ -15,6 +15,7 @@ create table if not exists characters (
   scenario text,
   first_message text,
   avatar text,
+  avatar_url text,
   rating text not null default 'explicit',
   minor_safe_mode boolean not null default false,
   visibility text not null default 'private' check (visibility in ('private', 'public')),
@@ -31,6 +32,7 @@ create table if not exists chats (
   character_id bigint not null references characters(id) on delete cascade,
   user_id uuid not null references auth.users(id) on delete cascade,
   title text not null default 'Chat',
+  rating text not null default 'explicit',
   created_at timestamptz not null default now(),
   last_message_at timestamptz not null default now()
 );

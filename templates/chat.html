@@ -8,7 +8,9 @@
     </a>
     <div class="chat-title">
       <div class="chat-avatar-wrap">
-        <div class="chat-avatar">{{ character['avatar'] if character['avatar'] else character['name'][0]|upper }}</div>
+        <div class="chat-avatar">
+          {% if character['avatar_url'] %}<img src="{{ character['avatar_url'] }}" alt="">{% else %}{{ character['avatar'] if character['avatar'] else character['name'][0]|upper }}{% endif %}
+        </div>
       </div>
       <div class="chat-title-text">
         <h1>{{ character['name'] }}</h1>
@@ -40,7 +42,9 @@
     {% for m in messages %}
       <div class="msg msg-{{ m['role'] }}">
         {% if m['role'] == 'assistant' %}
-          <div class="msg-avatar">{{ character['avatar'] if character['avatar'] else character['name'][0]|upper }}</div>
+          <div class="msg-avatar">
+            {% if character['avatar_url'] %}<img src="{{ character['avatar_url'] }}" alt="">{% else %}{{ character['avatar'] if character['avatar'] else character['name'][0]|upper }}{% endif %}
+          </div>
         {% endif %}
         <div class="msg-bubble">{{ m['content'] }}</div>
       </div>
@@ -59,6 +63,7 @@
   const chatId = {{ chat['id'] }};
   const characterId = {{ character['id'] }};
   const characterAvatar = {{ (character['avatar'] if character['avatar'] else character['name'][0]|upper) | tojson }};
+  const characterAvatarUrl = {{ (character['avatar_url'] or '') | tojson }};
 </script>
 <script src="{{ url_for('static', filename='chat.js') }}"></script>
 <script>
@@ -68,7 +73,7 @@
 
   if (ratingSelect) ratingSelect.addEventListener("change", async () => {
     try {
-      await fetch(`/character/${characterId}/rating`, {
+      await fetch(`/chat/${chatId}/rating`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rating: ratingSelect.value }),

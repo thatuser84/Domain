@@ -8,7 +8,9 @@
 
   <div class="detail-header">
     <div class="detail-avatar-wrap">
-      <div class="detail-avatar">{{ character['avatar'] if character['avatar'] else character['name'][0]|upper }}</div>
+      <div class="detail-avatar">
+        {% if character['avatar_url'] %}<img src="{{ character['avatar_url'] }}" alt="">{% else %}{{ character['avatar'] if character['avatar'] else character['name'][0]|upper }}{% endif %}
+      </div>
     </div>
     <div>
       <h1>{{ character['name'] }}</h1>
@@ -33,7 +35,14 @@
 
   <div class="page-header" style="margin-top:32px">
     <h2 style="margin:0;font-size:18px">your chats with {{ character['name'] }}</h2>
-    <form method="post" action="{{ url_for('new_chat', character_id=character['id']) }}">
+    <form method="post" action="{{ url_for('new_chat', character_id=character['id']) }}" class="new-chat-form">
+      {% if not character['minor_safe_mode'] %}
+        <select name="rating" class="rating-select" title="starting tone for this thread">
+          {% for level in rating_levels %}
+            <option value="{{ level }}" {% if level == character['rating'] %}selected{% endif %}>{{ rating_labels[level] }}</option>
+          {% endfor %}
+        </select>
+      {% endif %}
       <button type="submit" class="btn btn-primary">+ new chat</button>
     </form>
   </div>
@@ -42,7 +51,14 @@
     <div class="empty-state">
       <div class="empty-state-icon">✦</div>
       <p>no chats yet — start your first one.</p>
-      <form method="post" action="{{ url_for('new_chat', character_id=character['id']) }}">
+      <form method="post" action="{{ url_for('new_chat', character_id=character['id']) }}" class="new-chat-form" style="justify-content:center">
+        {% if not character['minor_safe_mode'] %}
+          <select name="rating" class="rating-select" title="starting tone for this thread">
+            {% for level in rating_levels %}
+              <option value="{{ level }}" {% if level == character['rating'] %}selected{% endif %}>{{ rating_labels[level] }}</option>
+            {% endfor %}
+          </select>
+        {% endif %}
         <button type="submit" class="btn btn-primary">+ new chat</button>
       </form>
     </div>
@@ -52,7 +68,10 @@
         <div class="chat-list-row">
           <a class="chat-list-link" href="{{ url_for('chat', chat_id=c['id']) }}">
             <span class="chat-list-title">{{ c['title'] }}</span>
-            <span class="chat-list-time">{{ c['last_message_at'][:16].replace('T', ' ') }}</span>
+            <span class="chat-list-meta">
+              {% if not character['minor_safe_mode'] %}<span class="card-rating-tag">{{ c['rating'] }}</span>{% endif %}
+              <span class="chat-list-time">{{ c['last_message_at'][:16].replace('T', ' ') }}</span>
+            </span>
           </a>
           <form method="post" action="{{ url_for('delete_chat', chat_id=c['id']) }}" onsubmit="return confirm('delete this chat thread?');">
             <button type="submit" class="btn btn-icon" title="delete chat">

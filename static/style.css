@@ -411,6 +411,27 @@ button { font-family: inherit; }
 
 .card-avatar-wrap { padding: 3px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--violet)); }
 
+.card-avatar,
+.detail-avatar,
+.chat-avatar,
+.msg-avatar,
+.history-avatar,
+.avatar-preview {
+  overflow: hidden;
+}
+
+.card-avatar img,
+.detail-avatar img,
+.chat-avatar img,
+.msg-avatar img,
+.history-avatar img,
+.avatar-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
 .card-avatar {
   width: 72px;
   height: 72px;
@@ -548,6 +569,32 @@ button { font-family: inherit; }
 
 .chat-list-title { font-size: 14px; font-weight: 600; }
 .chat-list-time { font-size: 12px; color: var(--text-faint); flex-shrink: 0; }
+
+.chat-list-meta { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+
+.history-who { display: flex; align-items: center; gap: 12px; min-width: 0; }
+
+.history-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+.history-thread-title {
+  display: block;
+  font-size: 12px;
+  color: var(--text-faint);
+  font-weight: 400;
+}
+
+.new-chat-form { display: flex; align-items: center; gap: 10px; }
 
 .tab-row {
   display: flex;

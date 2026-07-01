@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}characterground — history{% endblock %}
+{% block content %}
+<div class="page">
+  <div class="page-header">
+    <div>
+      <h1>history</h1>
+      <p class="page-subtitle">every chat thread you've got, across every character, most recent first</p>
+    </div>
+  </div>
+
+  {% if chats|length == 0 %}
+    <div class="empty-state">
+      <div class="empty-state-icon">✦</div>
+      <p>no chats yet — go start one from your characters or the community page.</p>
+    </div>
+  {% else %}
+    <div class="chat-list">
+      {% for c in chats %}
+        <div class="chat-list-row">
+          <a class="chat-list-link" href="{{ url_for('chat', chat_id=c['id']) }}">
+            <span class="history-who">
+              <span class="history-avatar">
+                {% if c['character']['avatar_url'] %}<img src="{{ c['character']['avatar_url'] }}" alt="">{% else %}{{ c['character']['avatar'] if c['character']['avatar'] else c['character']['name'][0]|upper }}{% endif %}
+              </span>
+              <span>
+                <span class="chat-list-title">{{ c['character']['name'] }}</span>
+                <span class="history-thread-title">{{ c['title'] }}</span>
+              </span>
+            </span>
+            <span class="chat-list-meta">
+              {% if not c['character']['minor_safe_mode'] %}<span class="card-rating-tag">{{ c['rating'] }}</span>{% endif %}
+              <span class="chat-list-time">{{ c['last_message_at'][:16].replace('T', ' ') }}</span>
+            </span>
+          </a>
+          <form method="post" action="{{ url_for('delete_chat', chat_id=c['id']) }}" onsubmit="return confirm('delete this chat thread?');">
+            <button type="submit" class="btn btn-icon" title="delete chat">
+              <svg class="icon" viewBox="0 0 24 24" style="width:14px;height:14px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </form>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}
